@@ -10,6 +10,7 @@ from . import secrets            # noqa: F401,E402
 from . import sdk_versions       # noqa: F401,E402
 from . import path_traversal     # noqa: F401,E402
 from . import ssrf               # noqa: F401,E402
+from . import insecure_deser     # noqa: F401,E402
 
 
 def all_rules():

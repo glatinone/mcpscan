@@ -21,6 +21,8 @@ jobs:
         run: pip install -e .
       - name: Run tests
         run: python -m unittest discover -s tests -v
+      - name: Dogfood — scan our own source (must be clean)
+        run: mcpscan . --min-severity low
       - name: Self-scan clean fixture (must pass with exit 0)
         run: mcpscan tests/fixtures/clean --min-severity low
       - name: Scan vulnerable fixture (must fail with findings)

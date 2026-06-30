@@ -72,6 +72,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP006** | 📦 Vulnerable SDK | High | Known-bad `@modelcontextprotocol/sdk` / `mcp` / `fastmcp` versions |
 | **MCP007** | 📂 Path traversal | Medium–High | File reads (`open`, `fs.readFile`) whose path is built from tool input |
 | **MCP008** | 🌐 SSRF | Medium–High | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
+| **MCP009** | 📦 Insecure deserialization | High–Critical | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
 
 ### 🌟 The differentiator: tool poisoning
 

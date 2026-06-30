@@ -20,3 +20,9 @@ def read_tool(name):
 def fetch_tool(url):
     # MCP008: URL assembled from input -> SSRF.
     return requests.get(f"https://proxy.internal/{url}").text
+
+
+def load_tool(blob):
+    # MCP009: insecure deserialization of untrusted input.
+    import pickle
+    return pickle.loads(blob)

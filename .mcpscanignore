@@ -1,0 +1,9 @@
+# mcpscan runs clean on its own source. Two intentional exclusions:
+#
+# tests/fixtures  — fixtures are deliberately vulnerable (that's the point).
+# mcpscan/rules   — rule definitions literally contain the attack patterns they
+#                   match (regex strings like "os.system" or injection phrases),
+#                   so a pattern scanner always flags its own corpus. This is the
+#                   classic self-reference case, not a real finding.
+tests/fixtures
+mcpscan/rules
