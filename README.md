@@ -70,6 +70,8 @@ mcpscan ./path-to-an-mcp-server
 | **MCP004** | 🔓 Over-broad permissions | High–Critical | Wildcard grants (`Bash(*)`, `"*"`), `bypassPermissions`, auto-approve |
 | **MCP005** | 🔑 Leaked secrets | High–Critical | API keys / tokens committed into configs (auto-redacted in output) |
 | **MCP006** | 📦 Vulnerable SDK | High | Known-bad `@modelcontextprotocol/sdk` / `mcp` / `fastmcp` versions |
+| **MCP007** | 📂 Path traversal | Medium–High | File reads (`open`, `fs.readFile`) whose path is built from tool input |
+| **MCP008** | 🌐 SSRF | Medium–High | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -241,8 +243,9 @@ Tests cover both a **vulnerable** fixture (every rule must fire) and a **clean**
 - [ ] Publish to PyPI (`pipx install mcpscan`)
 - [ ] Ship as an **MCP server** so agents can scan tools on demand
 - [ ] GitHub Action on the Marketplace
-- [ ] More rules: SSRF in fetch tools, path traversal, over-broad `WebFetch` domains
-- [ ] `.mcpscanignore` and inline `# mcpscan: ignore` suppressions
+- [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
+- [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
+- [ ] More rules: over-broad `WebFetch` domains, insecure deserialization
 
 Contributions welcome — open an issue or PR.
 

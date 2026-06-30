@@ -19,7 +19,8 @@ class TestVulnerableFixture(unittest.TestCase):
         cls.ids = {f.rule_id for f in cls.report.findings}
 
     def test_every_rule_fires(self):
-        for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005", "MCP006"):
+        for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
+                    "MCP006", "MCP007", "MCP008"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
