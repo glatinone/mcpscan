@@ -65,6 +65,33 @@ class TestSuppression(unittest.TestCase):
         self.assertFalse(path_ignored("src/app.py", ["vendor"]))
 
 
+class TestCli(unittest.TestCase):
+    @staticmethod
+    def _run(argv):
+        import contextlib
+        import io
+        from mcpscan.cli import main
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            return main(argv)
+
+    def test_list_rules(self):
+        from mcpscan.cli import list_rules
+        out = list_rules()
+        for rid in ("MCP001", "MCP008"):
+            self.assertIn(rid, out)
+        self.assertIn("8 rules", out)
+
+    def test_main_clean_exit_zero(self):
+        self.assertEqual(self._run([CLEAN, "--no-color"]), 0)
+
+    def test_main_vulnerable_exit_one(self):
+        self.assertEqual(self._run([VULN, "--no-color", "--min-severity", "high"]), 1)
+
+    def test_main_missing_path_exit_two(self):
+        self.assertEqual(self._run(["does-not-exist-xyz", "--no-color"]), 2)
+
+
 class TestRenderers(unittest.TestCase):
     def test_json_and_sarif_are_serialisable(self):
         report = scan(VULN)

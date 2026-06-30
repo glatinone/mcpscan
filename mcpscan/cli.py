@@ -30,12 +30,27 @@ def build_parser() -> argparse.ArgumentParser:
                    help="minimum severity that causes a non-zero exit "
                         "(info|low|medium|high|critical; default: low)")
     p.add_argument("--no-color", action="store_true", help="disable ANSI colors")
+    p.add_argument("--list-rules", action="store_true", help="list all rules and exit")
     p.add_argument("-V", "--version", action="version", version=f"mcpscan {__version__}")
     return p
 
 
+def list_rules() -> str:
+    from . import rules as rules_pkg
+    rows = sorted(rules_pkg.all_rules(), key=lambda r: r.id)
+    lines = [f"{'ID':<8} {'SEVERITY':<9} NAME", f"{'-'*8} {'-'*9} {'-'*40}"]
+    for r in rows:
+        lines.append(f"{r.id:<8} {r.severity.label:<9} {r.name}")
+    lines.append(f"\n{len(rows)} rules.")
+    return "\n".join(lines)
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.list_rules:
+        print(list_rules())
+        return EXIT_OK
 
     if not os.path.exists(args.path):
         print(f"mcpscan: path not found: {args.path}", file=sys.stderr)
