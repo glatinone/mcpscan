@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcpscan"
+version = "0.1.0"
+description = "Supply-chain security scanner for MCP servers and Claude Code projects — catch tool-poisoning, command injection and risky permissions before you install."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "glatinone" }]
+keywords = ["mcp", "security", "scanner", "supply-chain", "claude", "llm", "prompt-injection", "sast"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Topic :: Security",
+  "Programming Language :: Python :: 3",
+]
+dependencies = []  # zero runtime dependencies — stdlib only
+
+[project.urls]
+Homepage = "https://github.com/glatinone/mcpscan"
+Issues = "https://github.com/glatinone/mcpscan/issues"
+
+[project.scripts]
+mcpscan = "mcpscan.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mcpscan*"]
