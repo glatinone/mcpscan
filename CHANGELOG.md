@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- Rule **MCP010** — disabled TLS verification (`verify=False`, `rejectUnauthorized: false`).
+- Reusable composite **GitHub Action** (`uses: glatinone/mcpscan@v0.2.0`).
+
 ## [0.2.0] - 2026-06-30
 
 ### Added

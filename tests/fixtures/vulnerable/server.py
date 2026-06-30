@@ -26,3 +26,8 @@ def load_tool(blob):
     # MCP009: insecure deserialization of untrusted input.
     import pickle
     return pickle.loads(blob)
+
+
+def call_api(token):
+    # MCP010: TLS verification disabled.
+    return requests.get("https://api.example.com", headers={"x": token}, verify=False)

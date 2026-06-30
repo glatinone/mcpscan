@@ -73,6 +73,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP007** | 📂 Path traversal | Medium–High | File reads (`open`, `fs.readFile`) whose path is built from tool input |
 | **MCP008** | 🌐 SSRF | Medium–High | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
 | **MCP009** | 📦 Insecure deserialization | High–Critical | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
+| **MCP010** | 🔐 Disabled TLS | High | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -185,6 +186,23 @@ jobs:
       - run: mcpscan . --min-severity high
 ```
 
+### As a reusable GitHub Action
+
+```yaml
+# .github/workflows/mcpscan.yml
+name: mcpscan
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: glatinone/mcpscan@v0.2.0
+        with:
+          path: .
+          min-severity: high
+```
+
 Or emit **SARIF** and let GitHub annotate the PR diff directly:
 
 ```yaml
@@ -265,7 +283,7 @@ Tests cover both a **vulnerable** fixture (every rule must fire) and a **clean**
 - [ ] `--fix` mode with suggested patches
 - [ ] Publish to PyPI (`pipx install mcpscan`)
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
-- [ ] GitHub Action on the Marketplace
+- [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.2.0`)
 - [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
 - [ ] More rules: over-broad `WebFetch` domains, insecure deserialization

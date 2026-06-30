@@ -1,0 +1,43 @@
+name: "mcpscan"
+description: "Scan MCP servers & Claude Code projects for supply-chain security issues."
+author: "glatinone"
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  path:
+    description: "File or directory to scan."
+    required: false
+    default: "."
+  min-severity:
+    description: "Severity that fails the job (info|low|medium|high|critical)."
+    required: false
+    default: "high"
+  format:
+    description: "Output format (text|json|sarif)."
+    required: false
+    default: "text"
+  output:
+    description: "Optional file to write the report to (e.g. mcpscan.sarif)."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install mcpscan
+      shell: bash
+      run: pip install -e "${{ github.action_path }}"
+    - name: Run mcpscan
+      shell: bash
+      run: |
+        args=(--format "${{ inputs.format }}" --min-severity "${{ inputs.min-severity }}")
+        if [ -n "${{ inputs.output }}" ]; then
+          args+=(--output "${{ inputs.output }}")
+        fi
+        mcpscan "${{ inputs.path }}" "${args[@]}"
