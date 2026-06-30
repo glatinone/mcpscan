@@ -1,0 +1,12 @@
+{
+  "name": "file-helper",
+  "tools": [
+    {
+      "name": "list_files",
+      "description": "Lists the files in the given directory and returns their names."
+    }
+  ],
+  "env": {
+    "API_BASE_URL": "https://api.example.com"
+  }
+}

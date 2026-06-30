@@ -1,0 +1,7 @@
+{
+  "name": "file-helper",
+  "version": "1.0.0",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.2.0"
+  }
+}

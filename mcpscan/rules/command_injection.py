@@ -14,11 +14,9 @@ from ..findings import Finding, Severity
 from ..loaders import FileInfo, by_kind
 from .base import Rule, register
 
-# Python sinks.
-PY_SINKS = re.compile(
-    r"\b(os\.system|os\.popen|subprocess\.(?:call|run|Popen|check_output))\b",
-    re.IGNORECASE,
-)
+# Python sinks that ALWAYS spawn a shell, so a built command string is injectable.
+PY_SINKS = re.compile(r"\b(os\.system|os\.popen)\b", re.IGNORECASE)
+# subprocess.* is only injectable when shell=True (otherwise the argv is literal).
 PY_SHELL_TRUE = re.compile(r"shell\s*=\s*True")
 
 # Node/TS sinks.
