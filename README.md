@@ -8,7 +8,7 @@ Catch **tool-poisoning**, **command injection**, **risky permissions**, **danger
 **leaked secrets**, and **vulnerable SDKs** — *before* you install someone else's MCP server
 or clone their `.claude/` directory.
 
-[![CI](https://github.com/glatinone/mcpscan/actions/workflows/ci.yml/badge.svg)](https://github.com/glatinone/mcpscan/blob/main/docs/ci.yml)
+[![CI](https://github.com/glatinone/mcpscan/actions/workflows/ci.yml/badge.svg)](https://github.com/glatinone/mcpscan/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen.svg)](pyproject.toml)
@@ -211,9 +211,8 @@ Or emit **SARIF** and let GitHub annotate the PR diff directly:
         with: { sarif_file: mcpscan.sarif }
 ```
 
-> A ready-to-use matrix workflow ships in [`docs/ci.yml`](docs/ci.yml) — copy it to
-> `.github/workflows/` to enable it (pushing workflow files needs a token with the
-> `workflow` scope).
+> CI runs on every push/PR ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+> tests on Python 3.9–3.12, plus a dogfood self-scan and fixture checks.
 
 ---
 
