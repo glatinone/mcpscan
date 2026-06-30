@@ -1,0 +1,4 @@
+# Normalize line endings: keep LF in the repo regardless of OS checkout.
+* text=auto eol=lf
+*.png binary
+*.sarif text eol=lf
