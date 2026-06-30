@@ -198,6 +198,28 @@ Or emit **SARIF** and let GitHub annotate the PR diff directly:
 
 ---
 
+## 🤖 Use it as an MCP server
+
+`mcpscan` ships its own zero-dependency MCP server, so an agent can scan tools on
+demand — *before* trusting them. Register the `mcpscan-mcp` command with any MCP client:
+
+```jsonc
+// Claude Desktop  →  claude_desktop_config.json
+{
+  "mcpServers": {
+    "mcpscan": { "command": "mcpscan-mcp" }
+  }
+}
+```
+
+It exposes one read-only tool, `scan(path, min_severity?)`, returning a JSON report.
+It only reads files — it never executes the code it scans.
+
+```bash
+# Quick stdio check:
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
+```
+
 ## 🧠 How it works
 
 ```
@@ -241,7 +263,7 @@ Tests cover both a **vulnerable** fixture (every rule must fire) and a **clean**
 
 - [ ] `--fix` mode with suggested patches
 - [ ] Publish to PyPI (`pipx install mcpscan`)
-- [ ] Ship as an **MCP server** so agents can scan tools on demand
+- [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
 - [ ] GitHub Action on the Marketplace
 - [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~

@@ -26,6 +26,7 @@ Issues = "https://github.com/glatinone/mcpscan/issues"
 
 [project.scripts]
 mcpscan = "mcpscan.cli:main"
+mcpscan-mcp = "mcpscan.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["mcpscan*"]
