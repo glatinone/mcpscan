@@ -7,6 +7,7 @@ from . import tool_poisoning     # noqa: F401,E402
 from . import hooks              # noqa: F401,E402
 from . import permissions        # noqa: F401,E402
 from . import secrets            # noqa: F401,E402
+from . import sdk_versions       # noqa: F401,E402
 
 
 def all_rules():

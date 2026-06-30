@@ -75,7 +75,7 @@ class LeakedSecrets(Rule):
         # Keep enough to locate, hide the secret body.
         def hide(m: "re.Match") -> str:
             s = m.group(0)
-            return s[:6] + "…REDACTED…" + s[-2:] if len(s) > 12 else "…REDACTED…"
+            return s[:6] + "...REDACTED..." + s[-2:] if len(s) > 12 else "...REDACTED..."
         for _, pat in TOKEN_PATTERNS:
             line = pat.sub(hide, line)
         return line
