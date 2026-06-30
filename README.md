@@ -44,9 +44,11 @@ tool definitions, hooks, and permission files you're about to trust:
 ## Install
 
 ```bash
-pipx install mcpscan        # recommended
-# or
-pip install mcpscan
+# from source (PyPI release coming):
+git clone https://github.com/glatinone/mcpscan
+pip install -e mcpscan
+# or run without installing:
+python -m mcpscan ./path-to-scan
 ```
 
 ## Usage
@@ -64,6 +66,12 @@ into CI:
 ```yaml
 - run: pipx run mcpscan . --min-severity high
 ```
+
+## Continuous integration
+
+A ready-to-use GitHub Actions workflow lives at [`docs/ci.yml`](docs/ci.yml)
+(Python 3.9–3.12 matrix + fixture scans). Copy it to `.github/workflows/ci.yml`
+to enable it — pushing workflow files requires a token with the `workflow` scope.
 
 ## License
 
