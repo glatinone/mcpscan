@@ -42,7 +42,9 @@ def render_text(report: Report, color: bool = True) -> str:
         for s in reversed(Severity) if counts[s.label]
     ) or c("no findings", "\033[92m")
 
-    header = c("mcpscan", _BOLD) + f"  scanned {report.files_scanned} files in {report.root}"
+    suffix = f" ({report.suppressed} suppressed)" if report.suppressed else ""
+    header = (c("mcpscan", _BOLD)
+              + f"  scanned {report.files_scanned} files in {report.root}{suffix}")
     footer = f"{_BOLD if color else ''}Summary:{_RESET if color else ''} {summary}"
     body = "\n".join(lines) if findings else c("  Clean — no issues found.\n", "\033[92m")
     err = ""
@@ -56,6 +58,7 @@ def render_json(report: Report) -> str:
         "tool": "mcpscan",
         "root": report.root,
         "files_scanned": report.files_scanned,
+        "suppressed": report.suppressed,
         "counts": report.counts(),
         "errors": report.errors,
         "findings": [

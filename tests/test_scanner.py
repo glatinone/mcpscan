@@ -43,6 +43,27 @@ class TestCleanFixture(unittest.TestCase):
         self.assertEqual(report.findings, [], f"unexpected findings: {report.findings}")
 
 
+class TestSuppression(unittest.TestCase):
+    def test_inline_and_glob_suppression(self):
+        from mcpscan.findings import Finding
+        from mcpscan.suppress import is_suppressed, path_ignored
+
+        lines = {
+            "a.py": ["os.system(x)  # mcpscan: ignore", "os.system(y)  # mcpscan: ignore[MCP001]"],
+            "b.py": ["os.system(z)  # mcpscan: ignore[MCP999]"],
+        }
+        f1 = Finding("MCP001", "t", Severity.HIGH, "a.py", 1)
+        f2 = Finding("MCP001", "t", Severity.HIGH, "a.py", 2)
+        f3 = Finding("MCP001", "t", Severity.HIGH, "b.py", 1)  # wrong id -> not suppressed
+        self.assertTrue(is_suppressed(f1, lines))
+        self.assertTrue(is_suppressed(f2, lines))
+        self.assertFalse(is_suppressed(f3, lines))
+
+        self.assertTrue(path_ignored("vendor/x.py", ["vendor"]))
+        self.assertTrue(path_ignored("a/b/secrets.json", ["secrets.json"]))
+        self.assertFalse(path_ignored("src/app.py", ["vendor"]))
+
+
 class TestRenderers(unittest.TestCase):
     def test_json_and_sarif_are_serialisable(self):
         report = scan(VULN)

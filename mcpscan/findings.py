@@ -52,6 +52,7 @@ class Report:
     root: str
     findings: List[Finding] = field(default_factory=list)
     files_scanned: int = 0
+    suppressed: int = 0
     errors: List[str] = field(default_factory=list)
 
     def add(self, finding: Finding) -> None:
