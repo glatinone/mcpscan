@@ -27,7 +27,7 @@ Rules are small, self-contained classes. A new one is usually ~30 lines.
 
    @register
    class MyRule(Rule):
-       id = "MCP009"               # next free id
+       id = "MCP013"               # next free id, check `mcpscan --list-rules`
        name = "Short description"
        severity = Severity.MEDIUM
 
