@@ -114,6 +114,8 @@ mcpscan <path>                         # scan a file or directory (default: .)
 mcpscan ./repo --min-severity high     # only exit non-zero on high/critical
 mcpscan ./repo --json                  # machine-readable JSON
 mcpscan ./repo -f sarif -o out.sarif   # SARIF for GitHub code scanning
+mcpscan ./repo --fix                   # preview mechanical fixes (dry run)
+mcpscan ./repo --apply-fix             # write those fixes to disk
 ```
 
 ### Options
@@ -126,7 +128,34 @@ mcpscan ./repo -f sarif -o out.sarif   # SARIF for GitHub code scanning
 | `-o, --output FILE` | Write report to a file instead of stdout | stdout |
 | `--min-severity LEVEL` | Severity that triggers a non-zero exit (`info`→`critical`) | `low` |
 | `--no-color` | Disable ANSI colors | colored if TTY |
+| `--fix` | Preview one-line mechanical fixes for fixable findings (dry run, no writes) | — |
+| `--apply-fix` | Write the fixes shown by `--fix` to disk (implies `--fix`) | — |
+| `--list-rules` | List every rule, its severity, and whether `--fix` covers it | — |
 | `-V, --version` | Print version | — |
+
+### `--fix`: mechanical, not magical
+
+`--fix` only touches findings where the correct patch is unambiguous — a value swap
+that can't change what a call does besides re-enabling the check it disabled. As of
+v0.4.0 that's **MCP009** (`yaml.load` → `yaml.safe_load`, single-argument calls only)
+and **MCP010** (`verify=False` / `check_hostname=False` dropped, `ssl.CERT_NONE` →
+`ssl.CERT_REQUIRED`, `ssl._create_unverified_context()` → `ssl.create_default_context()`,
+`rejectUnauthorized: false` → `true`, `NODE_TLS_REJECT_UNAUTHORIZED=0` → `=1`).
+
+Findings like `shell=True` or `pickle.loads` are **not** auto-fixed — turning a shell
+string into a safe argv list, or picking a replacement serialization format, requires
+knowing what the code is actually trying to do. `mcpscan --list-rules` shows a `FIX`
+column so you know which findings to expect a patch for.
+
+```console
+$ mcpscan ./some-mcp-server --fix
+server.py:33  [MCP010] TLS certificate verification disabled
+- return requests.get("https://api.example.com", headers={"x": token}, verify=False)
++ return requests.get("https://api.example.com", headers={"x": token})
+  why: Dropping verify=False restores the library default (verify=True).
+
+1 fixable finding(s). Re-run with --apply-fix to write these changes.
+```
 
 ### Exit codes
 
@@ -199,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.3.1
+      - uses: glatinone/mcpscan@v0.4.0
         with:
           path: .
           min-severity: high
@@ -330,10 +359,10 @@ ships from the tagged commit, not from `main`.
 
 ## 🗺️ Roadmap
 
-- [ ] `--fix` mode with suggested patches
 - [ ] Publish to PyPI (`pipx install mcpscan`)
+- [x] ~~`--fix` mode with suggested patches~~ (MCP009 / MCP010, v0.4.0 — see [above](#-fix-mechanical-not-magical))
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
-- [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.3.1`)
+- [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.4.0`)
 - [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
 - [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009),

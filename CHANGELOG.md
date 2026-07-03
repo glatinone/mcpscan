@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-03
+
+### Added
+- `--fix`: preview one-line mechanical fixes for fixable findings as a unified diff plus a
+  one-line explanation of why the original pattern is dangerous (dry run, no writes).
+- `--apply-fix`: write those fixes to disk.
+- `--list-rules` now shows a `FIX` column so you know which rules `--fix` covers.
+- Mechanical fixes for **MCP009** (`yaml.load(x)` -> `yaml.safe_load(x)`, single-argument
+  calls only — anything with an explicit `Loader=` is left for a human) and **MCP010**
+  (`verify=False` / `check_hostname=False` dropped, `ssl.CERT_NONE` -> `ssl.CERT_REQUIRED`,
+  `ssl._create_unverified_context()` -> `ssl.create_default_context()`,
+  `rejectUnauthorized: false` -> `true`, `NODE_TLS_REJECT_UNAUTHORIZED=0` -> `=1`).
+- Rules opt into fixability via a new `Rule.fix_line()` hook (default: not fixable).
+  Deliberately unfixed: `shell=True` (needs the command turned into an argv list, not a
+  value swap) and `pickle.loads` (needs a replacement format chosen by a human).
+
+### Fixed
+- `mcpscan/__init__.py`'s `__version__` was still `0.3.0` after the 0.3.1 release
+  (only `pyproject.toml` had been bumped). Both now read `0.4.0`.
+
 ## [0.3.1] - 2026-07-03
 
 ### Added

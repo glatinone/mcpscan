@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Callable, List, Pattern
+from typing import Callable, List, Optional, Pattern, Tuple
 
 from ..findings import Finding, Severity
 from ..loaders import FileInfo
@@ -21,6 +21,17 @@ class Rule:
 
     def check(self, files: List[FileInfo]) -> List[Finding]:  # pragma: no cover
         raise NotImplementedError
+
+    def fix_line(self, line: str) -> Optional[Tuple[str, str]]:
+        """Return `(fixed_line, explanation)` if *line* can be mechanically repaired.
+
+        Default: not fixable. Only override this for a substitution confident
+        enough that it can't be the wrong call — e.g. swapping `yaml.load` for
+        `yaml.safe_load`. Fixes that require choosing new argument values or
+        restructuring a call (like turning a shell string into an argv list for
+        `shell=True`) belong in a human's hands, not `--fix`.
+        """
+        return None
 
     # --- helpers shared by most rules -------------------------------------
 

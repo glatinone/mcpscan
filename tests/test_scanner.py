@@ -194,6 +194,120 @@ class TestCli(unittest.TestCase):
         self.assertEqual(self._run(["does-not-exist-xyz", "--no-color"]), 2)
 
 
+class TestFixer(unittest.TestCase):
+    @staticmethod
+    def _fixes_for(text, relpath, rule_id):
+        import tempfile
+
+        from mcpscan.findings import Report
+        from mcpscan.fixer import compute_fixes
+        from mcpscan.loaders import FileInfo
+        from mcpscan.rules import all_rules
+
+        # Not a context manager: the returned FileInfo's abspath needs to stay
+        # readable/writable after this helper returns (see apply_fixes tests).
+        tmp = tempfile.mkdtemp()
+        abspath = os.path.join(tmp, relpath)
+        with open(abspath, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        f = FileInfo(relpath=relpath, abspath=abspath, text=text,
+                     kind="source", in_dot_claude=False)
+        rule = next(r for r in all_rules() if r.id == rule_id)
+        report = Report(root=tmp, findings=rule.check([f]))
+        return compute_fixes(report, [f]), f
+
+    def test_yaml_load_is_fixed_to_safe_load(self):
+        fixes, _f = self._fixes_for("data = yaml.load(raw)\n", "s.py", "MCP009")  # mcpscan: ignore
+        self.assertEqual(len(fixes), 1)
+        self.assertEqual(fixes[0].after, "data = yaml.safe_load(raw)")
+
+    def test_yaml_load_with_explicit_loader_is_not_fixed(self):
+        fixes, _f = self._fixes_for(
+            "data = yaml.load(raw, Loader=yaml.Loader)\n", "s.py", "MCP009")  # mcpscan: ignore
+        self.assertEqual(fixes, [])
+
+    def test_verify_false_kwarg_is_dropped(self):
+        fixes, _f = self._fixes_for(
+            'requests.get(url, verify=False)\n', "s.py", "MCP010")  # mcpscan: ignore
+        self.assertEqual(len(fixes), 1)
+        self.assertEqual(fixes[0].after, "requests.get(url)")
+
+    def test_ssl_cert_none_becomes_cert_required(self):
+        fixes, _f = self._fixes_for(
+            "ctx.verify_mode = ssl.CERT_NONE\n", "s.py", "MCP010")  # mcpscan: ignore
+        self.assertEqual(len(fixes), 1)
+        self.assertEqual(fixes[0].after, "ctx.verify_mode = ssl.CERT_REQUIRED")
+
+    def test_reject_unauthorized_false_becomes_true(self):
+        fixes, _f = self._fixes_for(
+            "const opts = { rejectUnauthorized: false };\n", "s.js", "MCP010")  # mcpscan: ignore
+        self.assertEqual(len(fixes), 1)
+        self.assertEqual(fixes[0].after, "const opts = { rejectUnauthorized: true };")
+
+    def test_apply_fixes_writes_file_and_preserves_other_lines(self):
+        from mcpscan.fixer import apply_fixes
+
+        text = "import requests\n\nrequests.get(url, verify=False)\n"  # mcpscan: ignore
+        fixes, f = self._fixes_for(text, "s.py", "MCP010")
+        self.assertEqual(len(fixes), 1)
+        modified = apply_fixes(fixes, [f])
+        self.assertEqual(modified, ["s.py"])
+        with open(f.abspath, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertEqual(result, "import requests\n\nrequests.get(url)\n")
+
+    def test_shell_true_has_no_mechanical_fix(self):
+        fixes, _f = self._fixes_for(
+            'subprocess.run(f"cat {user_arg}", shell=True)\n', "s.py", "MCP001")  # mcpscan: ignore
+        self.assertEqual(fixes, [])
+
+
+class TestFixCli(unittest.TestCase):
+    @staticmethod
+    def _run(argv):
+        import contextlib
+        import io
+        from mcpscan.cli import main
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = main(argv)
+        return code, buf.getvalue()
+
+    def test_fix_preview_does_not_modify_fixture(self):
+        with open(os.path.join(VULN, "server.py"), "r", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007]
+            before = fh.read()
+        code, out = self._run([VULN, "--fix", "--no-color"])
+        with open(os.path.join(VULN, "server.py"), "r", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007]
+            after = fh.read()
+        self.assertEqual(before, after, "--fix without --apply-fix must not touch disk")
+        self.assertIn("verify", out)
+        self.assertIn("Re-run with --apply-fix", out)
+
+    def test_fix_on_clean_fixture_reports_nothing_fixable(self):
+        code, out = self._run([CLEAN, "--fix", "--no-color"])
+        self.assertEqual(code, 0)
+        self.assertIn("no mechanically fixable findings", out)
+
+    def test_apply_fix_writes_then_is_idempotent(self):
+        import shutil
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            copy_root = os.path.join(tmp, "vuln")
+            shutil.copytree(VULN, copy_root)
+
+            code1, out1 = self._run([copy_root, "--apply-fix", "--no-color"])
+            self.assertIn("applied", out1)
+
+            with open(os.path.join(copy_root, "server.py"), "r", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007]
+                patched = fh.read()
+            self.assertNotIn("verify=False", patched)  # mcpscan: ignore
+
+            # Second pass: nothing left to fix, exit code / output stable.
+            code2, out2 = self._run([copy_root, "--fix", "--no-color"])
+            self.assertIn("no mechanically fixable findings", out2)
+
+
 class TestRenderers(unittest.TestCase):
     def test_json_and_sarif_are_serialisable(self):
         report = scan(VULN)

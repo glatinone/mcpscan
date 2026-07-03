@@ -8,8 +8,9 @@ import sys
 
 from . import __version__
 from .findings import Severity
+from .fixer import apply_fixes, compute_fixes, render_preview
 from .report import render
-from .scanner import scan
+from .scanner import scan_files
 
 EXIT_OK = 0
 EXIT_FINDINGS = 1
@@ -31,16 +32,22 @@ def build_parser() -> argparse.ArgumentParser:
                         "(info|low|medium|high|critical; default: low)")
     p.add_argument("--no-color", action="store_true", help="disable ANSI colors")
     p.add_argument("--list-rules", action="store_true", help="list all rules and exit")
+    p.add_argument("--fix", action="store_true",
+                   help="preview mechanical one-line fixes for fixable findings (dry run)")
+    p.add_argument("--apply-fix", action="store_true",
+                   help="write the fixes shown by --fix to disk (implies --fix)")
     p.add_argument("-V", "--version", action="version", version=f"mcpscan {__version__}")
     return p
 
 
 def list_rules() -> str:
     from . import rules as rules_pkg
+    from .rules.base import Rule
     rows = sorted(rules_pkg.all_rules(), key=lambda r: r.id)
-    lines = [f"{'ID':<8} {'SEVERITY':<9} NAME", f"{'-'*8} {'-'*9} {'-'*40}"]
+    lines = [f"{'ID':<8} {'SEVERITY':<9} {'FIX':<5} NAME", f"{'-'*8} {'-'*9} {'-'*5} {'-'*40}"]
     for r in rows:
-        lines.append(f"{r.id:<8} {r.severity.label:<9} {r.name}")
+        fixable = "yes" if type(r).fix_line is not Rule.fix_line else "-"
+        lines.append(f"{r.id:<8} {r.severity.label:<9} {fixable:<5} {r.name}")
     lines.append(f"\n{len(rows)} rules.")
     return "\n".join(lines)
 
@@ -62,7 +69,16 @@ def main(argv=None) -> int:
         return EXIT_ERROR
 
     fmt = "json" if args.json else args.format
-    report = scan(args.path)
+    report, files = scan_files(args.path)
+
+    if args.fix or args.apply_fix:
+        fixes = compute_fixes(report, files)
+        print(render_preview(fixes))
+        if args.apply_fix and fixes:
+            modified = apply_fixes(fixes, files)
+            print(f"\nmcpscan: applied {len(fixes)} fix(es) across {len(modified)} file(s).",
+                  file=sys.stderr)
+        return EXIT_FINDINGS if report.at_or_above(threshold) else EXIT_OK
 
     color = (not args.no_color) and args.output is None and sys.stdout.isatty()
     text = render(report, fmt, color=color)

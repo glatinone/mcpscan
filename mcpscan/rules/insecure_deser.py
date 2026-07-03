@@ -9,7 +9,7 @@ from an untrusted caller.
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import List, Optional, Tuple
 
 from ..findings import Finding, Severity
 from ..loaders import FileInfo, by_kind
@@ -21,6 +21,9 @@ MARSHAL = re.compile(r"\bmarshal\.(?:load|loads)\s*\(")
 # yaml.load without an explicit safe loader.
 YAML_LOAD = re.compile(r"\byaml\.load\s*\(")
 YAML_SAFE = re.compile(r"Safe(?:C)?Loader|safe_load")
+# A single-argument yaml.load(x) call — safe to mechanically rewrite. Anything
+# with a second argument (e.g. an explicit Loader=) needs a human to check it.
+YAML_LOAD_SIMPLE = re.compile(r"\byaml\.load\(([^,()]*)\)")
 # Node insecure deserialization.
 JS_UNSERIALIZE = re.compile(r"\b(?:node-serialize|serialize)\s*\.\s*unserialize\s*\(|\bunserialize\s*\(")
 
@@ -64,3 +67,14 @@ class InsecureDeserialization(Rule):
                         severity=sev,
                     ))
         return out
+
+    def fix_line(self, line: str) -> Optional[Tuple[str, str]]:
+        if YAML_SAFE.search(line):
+            return None
+        m = YAML_LOAD_SIMPLE.search(line)
+        if not m:
+            return None
+        fixed = YAML_LOAD_SIMPLE.sub(r"yaml.safe_load(\1)", line, count=1)
+        return fixed, ("yaml.safe_load() only builds basic Python types (dict, list, str, "
+                        "int...), so it can't be tricked into instantiating arbitrary "
+                        "objects the way yaml.load() can.")
