@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "billing-api": {
+      "url": "https://billing.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer sk-live-51H8xJ2eKq9pT7vN3mZ8cQ1wR6yU4iO0aS5dF"
+      }
+    },
+    "public-search": {
+      "url": "https://search.example.com/mcp"
+    }
+  }
+}

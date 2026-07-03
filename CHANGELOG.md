@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-03
+
+### Added
+- Rule **MCP012** — remote MCP servers with no authentication or a hardcoded static token.
+  Flags `mcpServers` / `servers` entries pointing at an `http(s)://` URL that have no
+  Authorization / API-key header at all (High), or one that's a literal token instead of an
+  environment reference like `${TOKEN}` (Medium). Local, command/stdio-launched servers are
+  out of scope. Motivated by 2026 field data showing 60-90% of real MCP deployments run with
+  no auth or a long-lived static token — a far bigger real-world exposure than tool-poisoning
+  alone.
+
 ## [0.3.0] - 2026-07-03
 
 ### Added
@@ -42,7 +53,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/glatinone/mcpscan/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/glatinone/mcpscan/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/glatinone/mcpscan/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/glatinone/mcpscan/releases/tag/v0.1.0

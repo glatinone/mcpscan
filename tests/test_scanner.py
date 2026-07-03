@@ -20,7 +20,8 @@ class TestVulnerableFixture(unittest.TestCase):
 
     def test_every_rule_fires(self):
         for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
-                    "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011"):
+                    "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011",
+                    "MCP012"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
@@ -105,6 +106,46 @@ class TestWebFetchDomainRule(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class TestAuthGapsRule(unittest.TestCase):
+    @staticmethod
+    def _findings(payload):
+        import json as json_mod
+
+        from mcpscan.loaders import FileInfo
+        from mcpscan.rules.auth_gaps import AuthGaps
+
+        text = json_mod.dumps(payload)
+        f = FileInfo(relpath="claude_desktop_config.json", abspath="x", text=text,
+                     kind="manifest", in_dot_claude=False)
+        return AuthGaps().check([f])
+
+    def test_remote_server_with_no_auth_is_flagged(self):
+        out = self._findings({"mcpServers": {"public": {"url": "https://example.com/mcp"}}})
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.HIGH)
+
+    def test_hardcoded_bearer_token_is_flagged(self):
+        out = self._findings({"mcpServers": {"billing": {
+            "url": "https://example.com/mcp",
+            "headers": {"Authorization": "Bearer sk-live-51H8xJ2eKq9pT7vN3mZ8cQ1wR6yU4iO0aS5dF"},
+        }}})
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.MEDIUM)
+
+    def test_env_interpolated_token_is_clean(self):
+        out = self._findings({"mcpServers": {"internal": {
+            "url": "https://example.com/mcp",
+            "headers": {"Authorization": "Bearer ${MCP_TOKEN}"},
+        }}})
+        self.assertEqual(out, [])
+
+    def test_local_stdio_server_is_out_of_scope(self):
+        out = self._findings({"mcpServers": {"local": {
+            "command": "npx", "args": ["-y", "@example/server"],
+        }}})
+        self.assertEqual(out, [])
+
+
 class TestSuppression(unittest.TestCase):
     def test_inline_and_glob_suppression(self):
         from mcpscan.findings import Finding
@@ -139,9 +180,9 @@ class TestCli(unittest.TestCase):
     def test_list_rules(self):
         from mcpscan.cli import list_rules
         out = list_rules()
-        for rid in ("MCP001", "MCP011"):
+        for rid in ("MCP001", "MCP011", "MCP012"):
             self.assertIn(rid, out)
-        self.assertIn("11 rules", out)
+        self.assertIn("12 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)

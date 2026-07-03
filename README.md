@@ -75,6 +75,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP009** | 📦 Insecure deserialization | High–Critical | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
 | **MCP010** | 🔐 Disabled TLS | High | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
 | **MCP011** | 🌐 Over-broad WebFetch domain | Medium–High | `WebFetch(domain:*)`, a bare TLD wildcard (`*.com`), or `WebFetch` with no domain filter at all |
+| **MCP012** | 🔐 No auth / static token | Medium–High | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -198,7 +199,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.3.0
+      - uses: glatinone/mcpscan@v0.3.1
         with:
           path: .
           min-severity: high
@@ -245,7 +246,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      11 independent rules, each yielding Findings
+   rule registry      12 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -283,10 +284,11 @@ Tests cover both a **vulnerable** fixture (every rule must fire) and a **clean**
 - [ ] `--fix` mode with suggested patches
 - [ ] Publish to PyPI (`pipx install mcpscan`)
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
-- [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.3.0`)
+- [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.3.1`)
 - [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
-- [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009)
+- [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009),
+  ~~no-auth / hardcoded static tokens on remote MCP servers~~ (MCP012)
 
 Contributions welcome — open an issue or PR.
 

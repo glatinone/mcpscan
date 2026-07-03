@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "internal-search": {
+      "url": "https://mcp.internal.example.com/sse",
+      "headers": {
+        "Authorization": "Bearer ${MCP_INTERNAL_TOKEN}"
+      }
+    },
+    "local-files": {
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server-files"]
+    }
+  }
+}
