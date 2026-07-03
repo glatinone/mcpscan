@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "WebFetch(domain:api.example.com)"
+    ],
+    "deny": [
+      "Bash(*)",
+      "WebFetch(domain:*)"
+    ]
+  }
+}

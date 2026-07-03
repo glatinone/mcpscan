@@ -6,9 +6,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-03
+
 ### Added
 - Rule **MCP010** — disabled TLS verification (`verify=False`, `rejectUnauthorized: false`).
+- Rule **MCP011** — over-broad `WebFetch` domain allowances: `WebFetch(domain:*)`, a bare
+  TLD wildcard (`*.com`), or a `WebFetch` allow-entry with no domain filter at all.
 - Reusable composite **GitHub Action** (`uses: glatinone/mcpscan@v0.2.0`).
+
+### Fixed
+- MCP004's "inside a `deny` block" detection only protected the first line or two after
+  the `"deny"` key, so a wildcard denied on the second-or-later line of a multi-line
+  `deny` array could still fire as a false positive. Replaced with bracket-depth tracking
+  (`deny_block_lines`, shared by MCP004 and the new MCP011) that covers the whole array.
 
 ## [0.2.0] - 2026-06-30
 
@@ -32,6 +42,7 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/glatinone/mcpscan/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/glatinone/mcpscan/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/glatinone/mcpscan/releases/tag/v0.1.0

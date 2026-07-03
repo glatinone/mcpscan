@@ -64,3 +64,26 @@ def register(cls):
 def compile_any(*patterns: str, flags: int = re.IGNORECASE) -> Pattern[str]:
     """Compile an alternation of patterns into one regex."""
     return re.compile("|".join(f"(?:{p})" for p in patterns), flags)
+
+
+def deny_block_lines(lines: List[str]) -> "set[int]":
+    """Return the 1-based line numbers that fall inside a `"deny": [...]` array.
+
+    Tracks bracket depth from the `"deny"` key onward so multi-line deny lists
+    are fully covered, not just the one or two lines after the key. Wildcards
+    that a config explicitly *denies* are good practice, not a finding.
+    """
+    out: "set[int]" = set()
+    active = False
+    depth = 0
+    for i, line in enumerate(lines, start=1):
+        if not active and '"deny"' in line.lower():
+            active = True
+            depth = 0
+        if not active:
+            continue
+        depth += line.count("[") - line.count("]")
+        out.add(i)
+        if depth <= 0:
+            active = False
+    return out

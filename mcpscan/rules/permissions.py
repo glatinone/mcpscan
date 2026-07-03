@@ -12,7 +12,7 @@ from typing import List
 
 from ..findings import Finding, Severity
 from ..loaders import FileInfo, by_kind
-from .base import Rule, register
+from .base import Rule, deny_block_lines, register
 
 # Wildcard tool grants: Bash(*), Bash(*:*), Write(*), or a bare "*" entry.
 WILDCARD_RULE = re.compile(
@@ -41,17 +41,10 @@ class OverBroadPermissions(Rule):
         candidates = [f for f in by_kind(files, "config", "manifest")
                       if f.in_dot_claude or "permission" in f.text.lower()
                       or "defaultMode" in f.text or f.name.endswith(".json")]
-        # Track whether we are inside a "deny" block to avoid flagging wildcards
-        # that are being denied (which is good, not bad).
+        # Wildcards inside a "deny" block are good practice, not a finding.
         for f in candidates:
-            in_deny = 0
+            deny_lines = deny_block_lines(f.lines)
             for i, line in enumerate(f.lines, start=1):
-                low = line.lower()
-                if '"deny"' in low:
-                    in_deny = 2  # look out for the next line or two
-                elif in_deny:
-                    in_deny -= 1
-
                 if BYPASS_MODE.search(line):
                     out.append(self.finding(
                         f, i, line,
@@ -62,7 +55,7 @@ class OverBroadPermissions(Rule):
                     ))
                     continue
 
-                if in_deny:
+                if i in deny_lines:
                     continue  # wildcards inside deny[] are fine
 
                 if WILDCARD_RULE.search(line) or BARE_WILDCARD.match(line):

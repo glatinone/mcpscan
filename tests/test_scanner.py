@@ -20,7 +20,7 @@ class TestVulnerableFixture(unittest.TestCase):
 
     def test_every_rule_fires(self):
         for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
-                    "MCP006", "MCP007", "MCP008", "MCP009", "MCP010"):
+                    "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
@@ -42,6 +42,67 @@ class TestCleanFixture(unittest.TestCase):
     def test_clean_is_clean(self):
         report = scan(CLEAN)
         self.assertEqual(report.findings, [], f"unexpected findings: {report.findings}")
+
+
+class TestDenyBlockLines(unittest.TestCase):
+    def test_multiline_deny_array_is_fully_covered(self):
+        from mcpscan.rules.base import deny_block_lines
+
+        lines = [
+            '{',
+            '  "permissions": {',
+            '    "allow": ["Bash(git status)"],',
+            '    "deny": [',
+            '      "Bash(*)",',
+            '      "WebFetch(domain:*)"',
+            '    ]',
+            '  }',
+            '}',
+        ]
+        covered = deny_block_lines(lines)
+        # Every line of the deny array (open, both entries, close) must be covered,
+        # not just the first line or two after the "deny" key.
+        self.assertEqual(covered, {4, 5, 6, 7})
+
+    def test_single_line_deny_array(self):
+        from mcpscan.rules.base import deny_block_lines
+
+        self.assertEqual(deny_block_lines(['"deny": []']), {1})
+
+
+class TestWebFetchDomainRule(unittest.TestCase):
+    @staticmethod
+    def _findings(text):
+        from mcpscan.loaders import FileInfo
+        from mcpscan.rules.webfetch_domain import OverBroadWebFetchDomain
+
+        f = FileInfo(relpath=".claude/settings.json", abspath="x", text=text,
+                     kind="config", in_dot_claude=True)
+        return OverBroadWebFetchDomain().check([f])
+
+    def test_wildcard_domain_is_high(self):
+        out = self._findings('"WebFetch(domain:*)"')
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.HIGH)
+
+    def test_bare_tld_wildcard_is_medium(self):
+        out = self._findings('"WebFetch(domain:*.com)"')
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.MEDIUM)
+
+    def test_bare_webfetch_with_no_domain_is_flagged(self):
+        out = self._findings('"WebFetch"')
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.HIGH)
+
+    def test_scoped_domain_is_clean(self):
+        out = self._findings('"WebFetch(domain:api.example.com)"')
+        self.assertEqual(out, [])
+
+    def test_denied_wildcard_is_not_flagged(self):
+        text = '"deny": [\n  "WebFetch(domain:*)"\n]'
+        out = self._findings(text)
+        self.assertEqual(out, [])
 
 
 class TestSuppression(unittest.TestCase):
@@ -78,9 +139,9 @@ class TestCli(unittest.TestCase):
     def test_list_rules(self):
         from mcpscan.cli import list_rules
         out = list_rules()
-        for rid in ("MCP001", "MCP010"):
+        for rid in ("MCP001", "MCP011"):
             self.assertIn(rid, out)
-        self.assertIn("10 rules", out)
+        self.assertIn("11 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)
