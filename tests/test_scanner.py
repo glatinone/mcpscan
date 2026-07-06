@@ -146,6 +146,40 @@ class TestAuthGapsRule(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class TestVulnerableSDKRule(unittest.TestCase):
+    @staticmethod
+    def _findings(text, name="package.json"):
+        from mcpscan.loaders import FileInfo
+        from mcpscan.rules.sdk_versions import VulnerableSDK
+
+        f = FileInfo(relpath=name, abspath="x", text=text,
+                     kind="manifest", in_dot_claude=False)
+        return VulnerableSDK().check([f])
+
+    def test_flags_versions_between_old_and_current_baseline(self):
+        # These versions cleared the *previous* KNOWN_BAD baselines but are
+        # still below the versions that actually patch each package's most
+        # recent disclosed CVE — this is the drift a static denylist misses
+        # if it's never re-audited against new advisories.
+        cases = [
+            ('"@modelcontextprotocol/sdk": "1.20.0"', "1.26.0"),
+            ('mcp==1.15.0', "1.23.0"),
+            ('fastmcp==2.14.7', "3.2.0"),
+        ]
+        for line, patched in cases:
+            out = self._findings(line)
+            self.assertEqual(len(out), 1, f"expected a finding for: {line}")
+            self.assertIn(f"< {patched}", out[0].title)
+
+    def test_current_patched_versions_are_clean(self):
+        for line in ('"@modelcontextprotocol/sdk": "1.26.0"', "mcp==1.23.0", "fastmcp==3.2.0"):
+            self.assertEqual(self._findings(line), [], f"expected no finding for: {line}")
+
+    def test_non_manifest_filename_is_ignored(self):
+        out = self._findings('"@modelcontextprotocol/sdk": "1.0.0"', name="notes.json")
+        self.assertEqual(out, [])
+
+
 class TestSuppression(unittest.TestCase):
     def test_inline_and_glob_suppression(self):
         from mcpscan.findings import Finding

@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-06
+
+### Fixed
+- **MCP006 drift audit**: `KNOWN_BAD`'s patched-version baselines were stale relative to
+  disclosed CVEs and had gone unaudited since v0.1.0. Raised all three:
+  - `@modelcontextprotocol/sdk`: `1.12.0` -> `1.26.0` (CVE-2026-25536 cross-client data
+    leak via shared transport/server reuse; also folds in the 1.25.2 ReDoS fix,
+    CVE-2026-0621).
+  - `mcp`: `1.9.0` -> `1.23.0` (CVE-2025-66416, no DNS-rebinding protection by default on
+    localhost HTTP servers; also folds in the 1.9.4 malformed-request DoS fix,
+    CVE-2025-53366).
+  - `fastmcp`: `2.3.0` -> `3.2.0` (GHSA-vv7q-7jx5-f767, critical unescaped-path-param
+    traversal/SSRF in `OpenAPIProvider`; also folds in the CVE-2026-27124 OAuth
+    confused-deputy fix and the GHSA-m8x7-r2rg-vh5g Windows install command-injection
+    fix, both patched in the same release line).
+
+  Any project pinning a version between an old and new baseline (e.g.
+  `fastmcp==2.14.7`, the latest release on the old 2.x line) was a false negative
+  before this release. Added dedicated `MCP006` unit tests so future drift shows up as
+  a failing assertion instead of silent staleness.
+
 ## [0.4.0] - 2026-07-03
 
 ### Added
@@ -73,7 +94,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/glatinone/mcpscan/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/glatinone/mcpscan/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/glatinone/mcpscan/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/glatinone/mcpscan/compare/v0.2.0...v0.3.0

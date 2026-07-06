@@ -16,10 +16,40 @@ from ..loaders import FileInfo, by_kind
 from .base import Rule, register
 
 # package name -> (first patched version, advisory note)
+# Audited 2026-07-06 against the GitHub Advisory Database — each baseline is the
+# highest first-patched version among that package's disclosed CVEs, so a version
+# below it may still carry an earlier, already-superseded advisory too.
 KNOWN_BAD = {
-    "@modelcontextprotocol/sdk": ("1.12.0", "RCE in stdio transport message handling"),
-    "mcp": ("1.9.0", "RCE in SDK message handling"),
-    "fastmcp": ("2.3.0", "input-validation bypass in tool dispatch"),
+    # CVE-2026-25536 (GHSA-345p-7cg4-v4c7): cross-client data leak via shared
+    # transport/server reuse, patched 1.26.0. Supersedes the 1.12.0 stdio RCE
+    # baseline and the 1.25.2 ReDoS fix (CVE-2026-0621).
+    "@modelcontextprotocol/sdk": (
+        "1.26.0",
+        "CVE-2026-25536: cross-client data leak via shared transport/server reuse "
+        "(also fixes the CVE-2026-0621 UriTemplate ReDoS)",
+    ),
+    # CVE-2025-66416 (GHSA-9h52-p55h-vw2f): no DNS-rebinding protection by
+    # default on localhost HTTP servers, patched 1.23.0. Supersedes the 1.9.0
+    # message-handling RCE baseline and the 1.9.4 malformed-request DoS fix
+    # (CVE-2025-53366).
+    "mcp": (
+        "1.23.0",
+        "CVE-2025-66416: no DNS-rebinding protection by default for localhost "
+        "HTTP servers (also fixes the CVE-2025-53366 malformed-request DoS)",
+    ),
+    # GHSA-vv7q-7jx5-f767 (critical, CVSS 10.0): OpenAPIProvider path params
+    # substituted into URLs unescaped, allowing path traversal out of the
+    # intended API prefix (authenticated SSRF). Patched 3.2.0, alongside the
+    # OAuth confused-deputy (CVE-2026-27124) and Windows install command
+    # injection (GHSA-m8x7-r2rg-vh5g) advisories in the same release line.
+    # Supersedes the 2.3.0 tool-dispatch baseline and the 2.14.2 OAuth
+    # token-audience fix (CVE-2025-69196).
+    "fastmcp": (
+        "3.2.0",
+        "GHSA-vv7q-7jx5-f767: unescaped path params in OpenAPIProvider enable "
+        "path traversal / authenticated SSRF (also fixes the CVE-2026-27124 OAuth "
+        "confused-deputy and GHSA-m8x7-r2rg-vh5g Windows install command injection)",
+    ),
 }
 
 # Matches: "@modelcontextprotocol/sdk": "^1.4.2"   or   mcp==1.2.0   or   mcp>=1.0

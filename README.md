@@ -188,7 +188,7 @@ mcpscan  scanned 4 files in ./evil-mcp
            mcp.json:9
            > "ANTHROPIC_API_KEY": "sk-ant...REDACTED...EF"
 
-   HIGH    MCP006  @modelcontextprotocol/sdk 1.2.0 is vulnerable (< 1.12.0)
+   HIGH    MCP006  @modelcontextprotocol/sdk 1.2.0 is vulnerable (< 1.26.0)
            package.json:5
 
 Summary: 6 critical  1 high
