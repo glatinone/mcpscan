@@ -228,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.4.0
+      - uses: glatinone/mcpscan@v0.4.1
         with:
           path: .
           min-severity: high
