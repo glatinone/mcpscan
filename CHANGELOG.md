@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-07
+
+### Added
+- `.pre-commit-hooks.yaml`: mcpscan can now be installed as a
+  [pre-commit](https://pre-commit.com) hook.
+  ```yaml
+  repos:
+    - repo: https://github.com/glatinone/mcpscan
+      rev: v0.5.0
+      hooks:
+        - id: mcpscan
+  ```
+  The hook always scans the whole working tree (`pass_filenames: false`) rather than
+  only the files in the commit, since permission/config rules like MCP004 and MCP012
+  need the full picture, not one file in isolation. Defaults to `--min-severity=high`,
+  overridable via `args:` in the consumer's config. See README's new
+  "As a pre-commit hook" section.
+
 ## [0.4.1] - 2026-07-06
 
 ### Fixed
@@ -94,7 +112,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/glatinone/mcpscan/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/glatinone/mcpscan/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/glatinone/mcpscan/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/glatinone/mcpscan/compare/v0.3.0...v0.3.1

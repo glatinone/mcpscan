@@ -245,6 +245,35 @@ Or emit **SARIF** and let GitHub annotate the PR diff directly:
 > CI runs on every push/PR ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
 > tests on Python 3.9–3.12, plus a dogfood self-scan and fixture checks.
 
+### As a pre-commit hook
+
+Catch a risky MCP config before it's even pushed, using
+[pre-commit](https://pre-commit.com):
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/glatinone/mcpscan
+    rev: v0.4.1
+    hooks:
+      - id: mcpscan
+```
+
+```bash
+pre-commit install       # one-time, sets up the git hook
+pre-commit run mcpscan   # run it manually against the whole repo
+```
+
+The hook always scans the full working tree rather than only the files in the
+commit — permission and config rules (e.g. MCP004, MCP012) need the whole
+picture, not one file in isolation. Override the default `--min-severity high`
+in your own config if you want the hook to fail on lower-severity findings:
+
+```yaml
+      - id: mcpscan
+        args: ["--min-severity=medium"]
+```
+
 ---
 
 ## 🤖 Use it as an MCP server
@@ -363,6 +392,7 @@ ships from the tagged commit, not from `main`.
 - [x] ~~`--fix` mode with suggested patches~~ (MCP009 / MCP010, v0.4.0 — see [above](#-fix-mechanical-not-magical))
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
 - [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.4.0`)
+- [x] ~~Pre-commit hook~~ (`.pre-commit-hooks.yaml`, v0.5.0)
 - [x] ~~SSRF in fetch tools, path traversal~~ (MCP007 / MCP008)
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
 - [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009),

@@ -1,0 +1,13 @@
+- id: mcpscan
+  name: mcpscan (MCP / Claude Code security scan)
+  description: >-
+    Scan MCP server configs and Claude Code projects for tool-poisoning,
+    command injection, risky permissions, leaked secrets and vulnerable SDKs.
+  entry: mcpscan
+  language: python
+  # mcpscan scans a directory tree as a whole (permission/config rules need
+  # the full picture, not one file in isolation), so it takes no per-file
+  # arguments from pre-commit. It always scans the hook's working directory.
+  pass_filenames: false
+  always_run: true
+  args: ["--min-severity=high"]
