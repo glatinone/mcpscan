@@ -58,6 +58,7 @@ class InsecureTransport(Rule):
     id = "MCP010"
     name = "Disabled TLS verification"
     severity = Severity.HIGH
+    owasp = "MCP07:2025"  # Insufficient Authentication & Authorization (server identity check)
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

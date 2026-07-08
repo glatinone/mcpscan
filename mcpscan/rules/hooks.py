@@ -36,6 +36,7 @@ class DangerousHooks(Rule):
     id = "MCP003"
     name = "Dangerous Claude Code hook"
     severity = Severity.CRITICAL
+    owasp = "MCP05:2025"  # Command Injection & Execution
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

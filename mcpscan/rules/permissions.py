@@ -35,6 +35,7 @@ class OverBroadPermissions(Rule):
     id = "MCP004"
     name = "Over-broad permissions"
     severity = Severity.HIGH
+    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

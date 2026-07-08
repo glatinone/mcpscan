@@ -180,6 +180,39 @@ class TestVulnerableSDKRule(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class TestOwaspMapping(unittest.TestCase):
+    def test_every_rule_maps_to_a_real_category(self):
+        from mcpscan import rules as rules_pkg
+        from mcpscan.owasp import OWASP_MCP_TOP_10
+        for r in rules_pkg.all_rules():
+            self.assertIn(r.owasp, OWASP_MCP_TOP_10,
+                          f"{r.id} has no valid OWASP MCP Top 10 mapping: {r.owasp!r}")
+
+    def test_findings_carry_their_rules_owasp_tag(self):
+        from mcpscan import rules as rules_pkg
+        by_id = {r.id: r.owasp for r in rules_pkg.all_rules()}
+        report = scan(VULN)
+        self.assertTrue(report.findings)
+        for f in report.findings:
+            self.assertEqual(f.owasp, by_id[f.rule_id])
+
+    def test_list_rules_shows_owasp_column(self):
+        from mcpscan.cli import list_rules
+        out = list_rules()
+        self.assertIn("OWASP", out)
+        self.assertIn("MCP03:2025", out)  # MCP002 tool poisoning
+
+    def test_json_output_includes_owasp(self):
+        report = scan(VULN)
+        payload = render_json(report)
+        self.assertIn('"owasp": "MCP03:2025"', payload)
+
+    def test_sarif_rule_descriptor_carries_owasp_property(self):
+        report = scan(VULN)
+        payload = render_sarif(report)
+        self.assertIn('"owaspMcpTop10": "MCP03:2025"', payload)
+
+
 class TestSuppression(unittest.TestCase):
     def test_inline_and_glob_suppression(self):
         from mcpscan.findings import Finding

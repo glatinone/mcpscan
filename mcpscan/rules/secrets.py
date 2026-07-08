@@ -42,6 +42,7 @@ class LeakedSecrets(Rule):
     id = "MCP005"
     name = "Leaked secret in config"
     severity = Severity.HIGH
+    owasp = "MCP01:2025"  # Token Mismanagement & Secret Exposure
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

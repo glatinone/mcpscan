@@ -37,6 +37,7 @@ class CommandInjection(Rule):
     id = "MCP001"
     name = "Potential command injection"
     severity = Severity.HIGH
+    owasp = "MCP05:2025"  # Command Injection & Execution
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out = []

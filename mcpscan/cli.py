@@ -44,10 +44,11 @@ def list_rules() -> str:
     from . import rules as rules_pkg
     from .rules.base import Rule
     rows = sorted(rules_pkg.all_rules(), key=lambda r: r.id)
-    lines = [f"{'ID':<8} {'SEVERITY':<9} {'FIX':<5} NAME", f"{'-'*8} {'-'*9} {'-'*5} {'-'*40}"]
+    lines = [f"{'ID':<8} {'SEVERITY':<9} {'FIX':<5} {'OWASP':<10} NAME",
+              f"{'-'*8} {'-'*9} {'-'*5} {'-'*10} {'-'*40}"]
     for r in rows:
         fixable = "yes" if type(r).fix_line is not Rule.fix_line else "-"
-        lines.append(f"{r.id:<8} {r.severity.label:<9} {fixable:<5} {r.name}")
+        lines.append(f"{r.id:<8} {r.severity.label:<9} {fixable:<5} {r.owasp or '-':<10} {r.name}")
     lines.append(f"\n{len(rows)} rules.")
     return "\n".join(lines)
 

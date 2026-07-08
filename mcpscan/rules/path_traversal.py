@@ -32,6 +32,7 @@ class PathTraversal(Rule):
     id = "MCP007"
     name = "Path traversal in file tool"
     severity = Severity.MEDIUM
+    owasp = "MCP05:2025"  # Command Injection & Execution (untrusted-input-driven action)
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

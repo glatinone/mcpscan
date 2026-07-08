@@ -40,6 +40,7 @@ class Finding:
     line: int = 0           # 1-based line number, 0 if not applicable
     detail: str = ""        # longer explanation / remediation hint
     snippet: str = ""       # the offending text, trimmed
+    owasp: str = ""         # OWASP MCP Top 10 (2025) category id, e.g. "MCP05:2025"
 
     def location(self) -> str:
         return f"{self.path}:{self.line}" if self.line else self.path

@@ -28,7 +28,8 @@ def render_text(report: Report, color: bool = True) -> str:
     findings = report.sorted()
     for f in findings:
         tag = c(f" {f.severity.label.upper():^8} ", _COLOR[f.severity])
-        lines.append(f"{tag} {c(f.rule_id, _BOLD)}  {f.title}")
+        owasp = c(f" [{f.owasp}]", _DIM) if f.owasp else ""
+        lines.append(f"{tag} {c(f.rule_id, _BOLD)}  {f.title}{owasp}")
         lines.append(f"          {c(f.location(), _DIM)}")
         if f.snippet:
             lines.append(f"          {c('> ' + f.snippet, _DIM)}")
@@ -70,6 +71,7 @@ def render_json(report: Report) -> str:
                 "line": f.line,
                 "detail": f.detail,
                 "snippet": f.snippet,
+                "owasp": f.owasp,
             }
             for f in report.sorted()
         ],
@@ -88,6 +90,12 @@ _SARIF_LEVEL = {
 
 
 def render_sarif(report: Report) -> str:
+    # First OWASP tag seen per rule id — every finding from one rule carries
+    # the same tag, so any occurrence works as the rule-level lookup.
+    owasp_by_rule: Dict[str, str] = {}
+    for f in report.findings:
+        if f.owasp:
+            owasp_by_rule.setdefault(f.rule_id, f.owasp)
     rule_ids = sorted({f.rule_id for f in report.findings})
     sarif = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -96,7 +104,15 @@ def render_sarif(report: Report) -> str:
             "tool": {"driver": {
                 "name": "mcpscan",
                 "informationUri": "https://github.com/glatinone/mcpscan",
-                "rules": [{"id": rid} for rid in rule_ids],
+                "rules": [
+                    {
+                        "id": rid,
+                        **({"properties": {"tags": [owasp_by_rule[rid]],
+                                            "owaspMcpTop10": owasp_by_rule[rid]}}
+                           if rid in owasp_by_rule else {}),
+                    }
+                    for rid in rule_ids
+                ],
             }},
             "results": [
                 {
@@ -109,6 +125,7 @@ def render_sarif(report: Report) -> str:
                             "region": {"startLine": max(1, f.line)},
                         }
                     }],
+                    **({"properties": {"owaspMcpTop10": f.owasp}} if f.owasp else {}),
                 }
                 for f in report.sorted()
             ],

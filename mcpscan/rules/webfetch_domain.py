@@ -30,6 +30,7 @@ class OverBroadWebFetchDomain(Rule):
     id = "MCP011"
     name = "Over-broad WebFetch domain allowance"
     severity = Severity.HIGH
+    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

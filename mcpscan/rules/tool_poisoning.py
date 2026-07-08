@@ -54,6 +54,7 @@ class ToolPoisoning(Rule):
     id = "MCP002"
     name = "Tool poisoning / hidden instructions"
     severity = Severity.HIGH
+    owasp = "MCP03:2025"  # Tool Poisoning
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

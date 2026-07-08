@@ -33,6 +33,7 @@ class InsecureDeserialization(Rule):
     id = "MCP009"
     name = "Insecure deserialization"
     severity = Severity.HIGH
+    owasp = "MCP05:2025"  # Command Injection & Execution (unsafe deserialization -> RCE)
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

@@ -18,6 +18,7 @@ class Rule:
     id: str = "MCP000"
     name: str = "unnamed rule"
     severity: Severity = Severity.MEDIUM
+    owasp: str = ""  # OWASP MCP Top 10 (2025) category id, e.g. "MCP05:2025"
 
     def check(self, files: List[FileInfo]) -> List[Finding]:  # pragma: no cover
         raise NotImplementedError
@@ -46,6 +47,7 @@ class Rule:
             line=line,
             detail=detail,
             snippet=snippet.strip()[:200],
+            owasp=self.owasp,
         )
 
     def scan_lines(self, f: FileInfo, pattern: Pattern[str], *,

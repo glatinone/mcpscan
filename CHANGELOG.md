@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-08
+
+### Added
+- **OWASP MCP Top 10 mapping**: every finding now carries an `owasp` field
+  (e.g. `MCP05:2025`) tagging it against the official
+  [OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) taxonomy (v0.1, Phase 3
+  beta/pilot). The mapping was taken directly from the project's
+  [source file](https://github.com/OWASP/www-project-mcp-top-10/blob/main/tab_top10.md),
+  not a secondary summary, after an earlier check found two summaries disagreeing on
+  MCP06's title. Surfaced in `--list-rules` (new OWASP column), the `text`/`json` report
+  formats, and as an `owaspMcpTop10` property on both the rule descriptor and each
+  result in `sarif` output. New `mcpscan/owasp.py` holds the canonical id-to-title table;
+  a new test asserts every rule maps to a real category. 4 of the 10 OWASP categories
+  (MCP06, MCP08, MCP09, MCP10) aren't covered by any current rule — documented as gaps,
+  not silently ignored, in the README's mapping table. 46 tests passing (was 41).
+  Dogfood self-scan clean.
+
 ## [0.5.0] - 2026-07-07
 
 ### Added
@@ -112,7 +129,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/glatinone/mcpscan/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/glatinone/mcpscan/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/glatinone/mcpscan/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/glatinone/mcpscan/compare/v0.3.1...v0.4.0

@@ -52,6 +52,7 @@ class AuthGaps(Rule):
     id = "MCP012"
     name = "MCP server with no auth or a hardcoded static token"
     severity = Severity.HIGH
+    owasp = "MCP07:2025"  # Insufficient Authentication & Authorization
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

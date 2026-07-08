@@ -74,6 +74,7 @@ class VulnerableSDK(Rule):
     id = "MCP006"
     name = "Vulnerable MCP SDK version"
     severity = Severity.HIGH
+    owasp = "MCP04:2025"  # Software Supply Chain Attacks & Dependency Tampering
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []

@@ -62,20 +62,53 @@ mcpscan ./path-to-an-mcp-server
 
 ## 🔍 What it catches
 
-| ID | Check | Severity | What it flags |
-|----|-------|:--------:|---------------|
-| **MCP001** | 🧨 Command injection | High–Critical | `os.system`, `subprocess(... shell=True)`, `child_process.exec()` with interpolated input, `eval` |
-| **MCP002** | ☠️ **Tool poisoning** | High–Critical | Prompt-injection phrasing **and invisible Unicode** smuggled into tool descriptions / docstrings |
-| **MCP003** | 🪝 Dangerous hooks | High–Critical | `.claude/` hooks that pipe `curl … \| sh`, run base64 blobs, or exfiltrate env/secrets |
-| **MCP004** | 🔓 Over-broad permissions | High–Critical | Wildcard grants (`Bash(*)`, `"*"`), `bypassPermissions`, auto-approve |
-| **MCP005** | 🔑 Leaked secrets | High–Critical | API keys / tokens committed into configs (auto-redacted in output) |
-| **MCP006** | 📦 Vulnerable SDK | High | Known-bad `@modelcontextprotocol/sdk` / `mcp` / `fastmcp` versions |
-| **MCP007** | 📂 Path traversal | Medium–High | File reads (`open`, `fs.readFile`) whose path is built from tool input |
-| **MCP008** | 🌐 SSRF | Medium–High | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
-| **MCP009** | 📦 Insecure deserialization | High–Critical | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
-| **MCP010** | 🔐 Disabled TLS | High | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
-| **MCP011** | 🌐 Over-broad WebFetch domain | Medium–High | `WebFetch(domain:*)`, a bare TLD wildcard (`*.com`), or `WebFetch` with no domain filter at all |
-| **MCP012** | 🔐 No auth / static token | Medium–High | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
+| ID | Check | Severity | OWASP MCP Top 10 | What it flags |
+|----|-------|:--------:|:---:|---------------|
+| **MCP001** | 🧨 Command injection | High–Critical | [MCP05:2025](#-owasp-mcp-top-10-mapping) | `os.system`, `subprocess(... shell=True)`, `child_process.exec()` with interpolated input, `eval` |
+| **MCP002** | ☠️ **Tool poisoning** | High–Critical | [MCP03:2025](#-owasp-mcp-top-10-mapping) | Prompt-injection phrasing **and invisible Unicode** smuggled into tool descriptions / docstrings |
+| **MCP003** | 🪝 Dangerous hooks | High–Critical | [MCP05:2025](#-owasp-mcp-top-10-mapping) | `.claude/` hooks that pipe `curl … \| sh`, run base64 blobs, or exfiltrate env/secrets |
+| **MCP004** | 🔓 Over-broad permissions | High–Critical | [MCP02:2025](#-owasp-mcp-top-10-mapping) | Wildcard grants (`Bash(*)`, `"*"`), `bypassPermissions`, auto-approve |
+| **MCP005** | 🔑 Leaked secrets | High–Critical | [MCP01:2025](#-owasp-mcp-top-10-mapping) | API keys / tokens committed into configs (auto-redacted in output) |
+| **MCP006** | 📦 Vulnerable SDK | High | [MCP04:2025](#-owasp-mcp-top-10-mapping) | Known-bad `@modelcontextprotocol/sdk` / `mcp` / `fastmcp` versions |
+| **MCP007** | 📂 Path traversal | Medium–High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | File reads (`open`, `fs.readFile`) whose path is built from tool input |
+| **MCP008** | 🌐 SSRF | Medium–High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
+| **MCP009** | 📦 Insecure deserialization | High–Critical | [MCP05:2025](#-owasp-mcp-top-10-mapping) | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
+| **MCP010** | 🔐 Disabled TLS | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
+| **MCP011** | 🌐 Over-broad WebFetch domain | Medium–High | [MCP02:2025](#-owasp-mcp-top-10-mapping) | `WebFetch(domain:*)`, a bare TLD wildcard (`*.com`), or `WebFetch` with no domain filter at all |
+| **MCP012** | 🔐 No auth / static token | Medium–High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
+
+### 🏷️ OWASP MCP Top 10 mapping
+
+Every finding carries an `owasp` field (`MCP0X:2025`) mapping it to the
+[OWASP MCP Top 10](https://owasp.org/www-project-mcp-top-10/) — the taxonomy taken
+directly from the project's [source file](https://github.com/OWASP/www-project-mcp-top-10/blob/main/tab_top10.md)
+(v0.1, Phase 3 beta/pilot as of 2026-07-08) so every id and title here is verifiable,
+not guessed. It shows up in `--list-rules`, the `text`/`json` report formats, and as
+a `owaspMcpTop10` property on both the rule descriptor and each result in `sarif`
+output.
+
+| OWASP category | Title | mcpscan coverage |
+|---|---|---|
+| MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
+| MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011 |
+| MCP03:2025 | Tool Poisoning | MCP002 |
+| MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006 |
+| MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009 |
+| MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
+| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012 |
+| MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
+| MCP09:2025 | Shadow MCP Servers | *not yet covered* |
+| MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
+
+MCP07's static-input checks (path traversal, SSRF, insecure deserialization) are
+grouped under MCP05 rather than left unmapped, since the official category
+description explicitly frames "Command Injection & Execution" around *any* untrusted
+input driving a command, API call, or code path without validation — not shell
+commands alone. The four uncovered categories are honest gaps, not oversights: MCP06
+(prompt injection via content, not config) and MCP10 (cross-session context leakage)
+need runtime/semantic analysis a static scanner can't do; MCP08 (audit/telemetry) and
+MCP09 (shadow servers) are architectural/fleet-visibility concerns outside a
+single-repo scan (MCP09 is being scoped separately — see Roadmap).
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -228,7 +261,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.5.0
+      - uses: glatinone/mcpscan@v0.6.0
         with:
           path: .
           min-severity: high
@@ -254,7 +287,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: mcpscan
 ```
@@ -397,6 +430,10 @@ ships from the tagged commit, not from `main`.
 - [x] ~~`.mcpscanignore` and inline `# mcpscan: ignore` suppressions~~
 - [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009),
   ~~no-auth / hardcoded static tokens on remote MCP servers~~ (MCP012)
+- [x] ~~Map findings to OWASP MCP Top 10 category ids~~ (v0.6.0 — see [mapping table](#-owasp-mcp-top-10-mapping))
+- [ ] Close the OWASP MCP09:2025 (Shadow MCP Servers) gap: a `--discover` mode reading
+  known client config locations (Claude Desktop, Cursor, VS Code) to inventory what's
+  actually connected, since mcpscan currently only scans a directory you point it at.
 
 Contributions welcome — open an issue or PR.
 
