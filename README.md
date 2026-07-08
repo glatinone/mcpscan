@@ -9,6 +9,7 @@ Catch **tool-poisoning**, **command injection**, **risky permissions**, **danger
 or clone their `.claude/` directory.
 
 [![CI](https://github.com/glatinone/mcpscan/actions/workflows/ci.yml/badge.svg)](https://github.com/glatinone/mcpscan/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/glatinone/mcpscan)](https://github.com/glatinone/mcpscan/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Runtime deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen.svg)](pyproject.toml)
@@ -57,6 +58,10 @@ mcpscan ./path-to-an-mcp-server
 
 > **Requirements:** Python 3.9+ and nothing else. No pip dependencies, no network calls,
 > no telemetry. It only reads files.
+
+> **Not yet on PyPI.** `pip install mcpscan` doesn't work yet — install from a clone as
+> shown above, or pin the [GitHub Action](#-continuous-integration) or
+> [pre-commit hook](#as-a-pre-commit-hook) to a tagged release. See [Roadmap](#-roadmap).
 
 ---
 

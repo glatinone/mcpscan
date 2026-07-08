@@ -1,7 +1,8 @@
 # Contributing to mcpscan
 
 Thanks for helping make the MCP ecosystem safer! Contributions of all sizes are welcome —
-new rules, fewer false positives, docs, fixtures.
+new rules, fewer false positives, docs, fixtures. By participating, you're expected to
+follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Getting started
 
