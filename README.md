@@ -102,18 +102,17 @@ output.
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
 | MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
-| MCP09:2025 | Shadow MCP Servers | *not yet covered* |
+| MCP09:2025 | Shadow MCP Servers | `--discover` (v0.7.0) |
 | MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
 
 MCP07's static-input checks (path traversal, SSRF, insecure deserialization) are
 grouped under MCP05 rather than left unmapped, since the official category
 description explicitly frames "Command Injection & Execution" around *any* untrusted
 input driving a command, API call, or code path without validation — not shell
-commands alone. The four uncovered categories are honest gaps, not oversights: MCP06
-(prompt injection via content, not config) and MCP10 (cross-session context leakage)
-need runtime/semantic analysis a static scanner can't do; MCP08 (audit/telemetry) and
-MCP09 (shadow servers) are architectural/fleet-visibility concerns outside a
-single-repo scan (MCP09 is being scoped separately — see Roadmap).
+commands alone. Three categories remain honest gaps, not oversights: MCP06 (prompt
+injection via content, not config) and MCP10 (cross-session context leakage) need
+runtime/semantic analysis a static scanner can't do; MCP08 (audit/telemetry) is a
+fleet-visibility concern outside what a single scan of local files can answer.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -154,6 +153,7 @@ mcpscan ./repo --json                  # machine-readable JSON
 mcpscan ./repo -f sarif -o out.sarif   # SARIF for GitHub code scanning
 mcpscan ./repo --fix                   # preview mechanical fixes (dry run)
 mcpscan ./repo --apply-fix             # write those fixes to disk
+mcpscan --discover                     # scan known MCP client configs on this machine
 ```
 
 ### Options
@@ -168,8 +168,51 @@ mcpscan ./repo --apply-fix             # write those fixes to disk
 | `--no-color` | Disable ANSI colors | colored if TTY |
 | `--fix` | Preview one-line mechanical fixes for fixable findings (dry run, no writes) | — |
 | `--apply-fix` | Write the fixes shown by `--fix` to disk (implies `--fix`) | — |
+| `--discover` | Scan known MCP client config locations instead of a path (see below) | — |
 | `--list-rules` | List every rule, its severity, and whether `--fix` covers it | — |
 | `-V, --version` | Print version | — |
+
+### `--discover`: what MCP servers are actually configured on this machine
+
+A normal scan only sees what you point it at. Most engineers don't remember every
+MCP client they've installed, so a laptop routinely has server configs no project
+review ever touches — this is exactly [OWASP MCP09:2025 "Shadow MCP
+Servers"](https://owasp.org/www-project-mcp-top-10/). `--discover` checks the
+well-known, user-scope config paths for five clients and runs the normal rule set
+against whichever ones exist:
+
+| Client | Config checked |
+|---|---|
+| Claude Desktop | `claude_desktop_config.json` (per-OS path) |
+| Claude Code CLI | `~/.claude.json` (user scope) |
+| Cursor | `~/.cursor/mcp.json` (global scope) |
+| VS Code / Copilot | `mcp.json` in the VS Code user profile |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+
+```console
+$ mcpscan --discover
+mcpscan --discover  checked 5 known MCP client config location(s) for win32
+
+[x] Claude Code CLI (user) — C:\Users\you\.claude.json
+mcpscan  scanned 1 files in C:\Users\you\.claude.json
+
+   HIGH    MCP004  Wildcard permission grant [MCP02:2025]
+           .claude.json:156
+           > "*"
+
+[ ] Cursor (global) — not present (C:\Users\you\.cursor\mcp.json)
+...
+Discovery summary: 2/5 location(s) present, 1 finding(s) total.
+```
+
+Scope, on purpose: this is **per-machine only** — there's no fleet/remote-collection
+step, so run it on each machine you want visibility into. It also only checks
+*known, standard* paths; it's not a filesystem-wide crawl for anything named
+`mcp.json`. Project-scoped configs (`.cursor/mcp.json`, `.vscode/mcp.json`, a repo's
+own `.mcp.json`) already surface in a normal directory scan of that project, so
+`--discover` only adds the global/user-level configs a directory scan would never
+see. Supports `--format text` and `--json`; `sarif` and `--fix`/`--apply-fix` aren't
+wired up for discovery mode yet.
 
 ### `--fix`: mechanical, not magical
 
@@ -266,7 +309,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.6.0
+      - uses: glatinone/mcpscan@v0.7.0
         with:
           path: .
           min-severity: high
@@ -292,7 +335,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.6.0
+    rev: v0.7.0
     hooks:
       - id: mcpscan
 ```
@@ -436,9 +479,12 @@ ships from the tagged commit, not from `main`.
 - [x] ~~More rules: over-broad `WebFetch` domains~~ (MCP011), ~~insecure deserialization~~ (MCP009),
   ~~no-auth / hardcoded static tokens on remote MCP servers~~ (MCP012)
 - [x] ~~Map findings to OWASP MCP Top 10 category ids~~ (v0.6.0 — see [mapping table](#-owasp-mcp-top-10-mapping))
-- [ ] Close the OWASP MCP09:2025 (Shadow MCP Servers) gap: a `--discover` mode reading
-  known client config locations (Claude Desktop, Cursor, VS Code) to inventory what's
-  actually connected, since mcpscan currently only scans a directory you point it at.
+- [x] ~~Close the OWASP MCP09:2025 (Shadow MCP Servers) gap~~ (`--discover`, v0.7.0 — see
+  [above](#--discover-what-mcp-servers-are-actually-configured-on-this-machine))
+- [ ] `--discover` follow-ups: SARIF output, a `discover` tool on `mcpscan-mcp` so an
+  agent can ask "what's actually configured on this machine" the same way it asks
+  `scan`, and fleet-wide aggregation (needs an inventory/agent backend this project
+  doesn't have yet — out of scope for a single static scanner).
 
 Contributions welcome — open an issue or PR.
 

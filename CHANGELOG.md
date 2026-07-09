@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-09
+
+### Added
+- **`--discover` mode**: closes the OWASP MCP09:2025 ("Shadow MCP Servers") coverage
+  gap. Checks well-known, user-scope MCP client config paths — Claude Desktop, Claude
+  Code CLI (`~/.claude.json`), Cursor (`~/.cursor/mcp.json`), VS Code/Copilot user
+  profile, Windsurf — and runs the normal rule set against whichever ones actually
+  exist on this machine. Per-machine only by design (no fleet/remote-collection step);
+  a location that doesn't exist is reported as "checked, not present," not silently
+  skipped, so a clean report can't be misread as "nothing installed." Supports
+  `--format text`/`json`; `sarif` and `--fix`/`--apply-fix` aren't wired up for
+  discovery yet. New `mcpscan/discover.py`; path expansion resolves HOME/APPDATA via
+  env vars first (not OS-native `expanduser`/`expandvars`) so every platform's path
+  table is unit-testable from one CI runner. Verified against a real machine before
+  shipping: `--discover` on this machine's own `~/.claude.json` surfaced two real
+  MCP004 (wildcard permission) findings that a normal `mcpscan .` scan would never
+  have seen, since that file lives outside any project directory. New
+  `tests/test_discover.py` (10 tests); 56 tests passing (was 46). Dogfood self-scan
+  clean.
+
 ## [0.6.0] - 2026-07-08
 
 ### Added
@@ -129,7 +149,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/glatinone/mcpscan/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/glatinone/mcpscan/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/glatinone/mcpscan/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/glatinone/mcpscan/compare/v0.4.0...v0.4.1

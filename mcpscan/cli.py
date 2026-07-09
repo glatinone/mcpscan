@@ -7,6 +7,7 @@ import os
 import sys
 
 from . import __version__
+from .discover import render_discovery_json, render_discovery_text, run_discovery
 from .findings import Severity
 from .fixer import apply_fixes, compute_fixes, render_preview
 from .report import render
@@ -36,6 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="preview mechanical one-line fixes for fixable findings (dry run)")
     p.add_argument("--apply-fix", action="store_true",
                    help="write the fixes shown by --fix to disk (implies --fix)")
+    p.add_argument("--discover", action="store_true",
+                   help="scan known MCP client config locations on this machine "
+                        "(Claude Desktop, Claude Code, Cursor, VS Code, Windsurf) "
+                        "instead of a path — closes OWASP MCP09:2025 (Shadow MCP Servers)")
     p.add_argument("-V", "--version", action="version", version=f"mcpscan {__version__}")
     return p
 
@@ -53,6 +58,37 @@ def list_rules() -> str:
     return "\n".join(lines)
 
 
+def _run_discover(args: argparse.Namespace, fmt: str, color: bool, threshold: Severity) -> int:
+    if args.fix or args.apply_fix:
+        print("mcpscan: --discover does not support --fix/--apply-fix yet", file=sys.stderr)
+        return EXIT_ERROR
+    if fmt == "sarif":
+        print("mcpscan: --discover supports text/json output only (sarif not yet supported)",
+              file=sys.stderr)
+        return EXIT_ERROR
+    if args.path != ".":
+        print(f"mcpscan: --discover ignores the path argument ('{args.path}') — "
+              f"it scans known client config locations, not a project directory",
+              file=sys.stderr)
+
+    discovery = run_discovery()
+    text = render_discovery_json(discovery) if fmt == "json" else render_discovery_text(discovery, color=color)
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        print(f"mcpscan: wrote {fmt} discovery report to {args.output}", file=sys.stderr)
+    else:
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+        print(text)
+
+    at_or_above = any(f.severity >= threshold for f in discovery.all_findings())
+    return EXIT_FINDINGS if at_or_above else EXIT_OK
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -60,9 +96,6 @@ def main(argv=None) -> int:
         print(list_rules())
         return EXIT_OK
 
-    if not os.path.exists(args.path):
-        print(f"mcpscan: path not found: {args.path}", file=sys.stderr)
-        return EXIT_ERROR
     try:
         threshold = Severity.parse(args.min_severity)
     except ValueError as exc:
@@ -70,6 +103,15 @@ def main(argv=None) -> int:
         return EXIT_ERROR
 
     fmt = "json" if args.json else args.format
+    color = (not args.no_color) and args.output is None and sys.stdout.isatty()
+
+    if args.discover:
+        return _run_discover(args, fmt, color, threshold)
+
+    if not os.path.exists(args.path):
+        print(f"mcpscan: path not found: {args.path}", file=sys.stderr)
+        return EXIT_ERROR
+
     report, files = scan_files(args.path)
 
     if args.fix or args.apply_fix:
@@ -81,7 +123,6 @@ def main(argv=None) -> int:
                   file=sys.stderr)
         return EXIT_FINDINGS if report.at_or_above(threshold) else EXIT_OK
 
-    color = (not args.no_color) and args.output is None and sys.stdout.isatty()
     text = render(report, fmt, color=color)
 
     if args.output:
