@@ -31,6 +31,7 @@ Rules are small, self-contained classes. A new one is usually ~30 lines.
        id = "MCP013"               # next free id, check `mcpscan --list-rules`
        name = "Short description"
        severity = Severity.MEDIUM
+       owasp = "MCP05:2025"        # OWASP MCP Top 10 category id, or "" if none fits
 
        def check(self, files: list[FileInfo]) -> list[Finding]:
            out = []
@@ -41,10 +42,20 @@ Rules are small, self-contained classes. A new one is usually ~30 lines.
            return out
    ```
 
+   Pick `owasp` from the [mapping table in the README](README.md#-owasp-mcp-top-10-mapping);
+   leave it `""` (the `Rule` default) if the finding genuinely doesn't fit any of the
+   10 categories — don't force a mapping just to fill the field.
+
+   If the finding has an unambiguous, mechanical fix (a value swap that can't change
+   what the call does besides re-enabling the check), also override `fix_line()` — see
+   `MCP009`/`MCP010` in `mcpscan/rules/` for examples. Most rules don't need this;
+   leave the default `None` if the correct fix requires restructuring the call or
+   choosing a replacement value.
+
 2. Import it in `mcpscan/rules/__init__.py`.
 3. Add a triggering line to `tests/fixtures/vulnerable/` and assert it fires in
    `tests/test_scanner.py`. Make sure the **clean** fixture still passes.
-4. Document it in the README rules table and `CHANGELOG.md`.
+4. Document it in the README rules table (including its OWASP mapping) and `CHANGELOG.md`.
 
 ### Rule design principles
 
