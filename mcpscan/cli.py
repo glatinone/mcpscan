@@ -7,7 +7,7 @@ import os
 import sys
 
 from . import __version__
-from .discover import render_discovery_json, render_discovery_text, run_discovery
+from .discover import render_discovery_json, render_discovery_sarif, render_discovery_text, run_discovery
 from .findings import Severity
 from .fixer import apply_fixes, compute_fixes, render_preview
 from .report import render
@@ -62,17 +62,18 @@ def _run_discover(args: argparse.Namespace, fmt: str, color: bool, threshold: Se
     if args.fix or args.apply_fix:
         print("mcpscan: --discover does not support --fix/--apply-fix yet", file=sys.stderr)
         return EXIT_ERROR
-    if fmt == "sarif":
-        print("mcpscan: --discover supports text/json output only (sarif not yet supported)",
-              file=sys.stderr)
-        return EXIT_ERROR
     if args.path != ".":
         print(f"mcpscan: --discover ignores the path argument ('{args.path}') — "
               f"it scans known client config locations, not a project directory",
               file=sys.stderr)
 
     discovery = run_discovery()
-    text = render_discovery_json(discovery) if fmt == "json" else render_discovery_text(discovery, color=color)
+    if fmt == "json":
+        text = render_discovery_json(discovery)
+    elif fmt == "sarif":
+        text = render_discovery_sarif(discovery)
+    else:
+        text = render_discovery_text(discovery, color=color)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as fh:

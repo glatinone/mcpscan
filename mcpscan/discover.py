@@ -162,6 +162,39 @@ def render_discovery_text(discovery: DiscoveryResult, color: bool = True) -> str
     return "\n".join(lines)
 
 
+def render_discovery_sarif(discovery: DiscoveryResult) -> str:
+    """SARIF 2.1.0 for a discovery run, one ``run`` spanning every location.
+
+    Reuses :func:`report._sarif_rules`/``_sarif_result`` rather than
+    duplicating SARIF's rule/result shape here. Results are pointed at each
+    location's full config path (``location.path``), not ``finding.path`` —
+    a single-file scan records only the bare filename (e.g. ``mcp.json``),
+    which collides across clients (Cursor and VS Code both use that name) and
+    wouldn't tell a reader which location a result came from.
+    """
+    from .report import _sarif_rules, _sarif_result  # local: avoid report<->discover cycle
+
+    all_findings = discovery.all_findings()
+    results = [
+        _sarif_result(f, r.location.path)
+        for r in discovery.results if r.found and r.report
+        for f in r.report.sorted()
+    ]
+    sarif = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {"driver": {
+                "name": "mcpscan",
+                "informationUri": "https://github.com/glatinone/mcpscan",
+                "rules": _sarif_rules(all_findings),
+            }},
+            "results": results,
+        }],
+    }
+    return json.dumps(sarif, indent=2)
+
+
 def render_discovery_json(discovery: DiscoveryResult) -> str:
     payload = {
         "tool": "mcpscan",

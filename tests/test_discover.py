@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from mcpscan import cli
-from mcpscan.discover import known_locations, run_discovery
+from mcpscan.discover import known_locations, render_discovery_sarif, run_discovery
 
 
 VULN_REMOTE_SERVER = json.dumps({
@@ -101,6 +101,42 @@ class TestRunDiscovery(unittest.TestCase):
         self.assertEqual(cursor_result.report.findings, [])
 
 
+class TestRenderDiscoverySarif(unittest.TestCase):
+    def test_result_uri_is_the_full_location_path_not_the_bare_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_cursor_config(tmp, VULN_REMOTE_SERVER)
+
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp, "APPDATA": os.path.join(tmp, "AppData")}):
+                discovery = run_discovery(platform="linux")
+
+        sarif = json.loads(render_discovery_sarif(discovery))
+        cursor_path = next(r.location.path for r in discovery.results if r.location.client == "Cursor (global)")
+        results = sarif["runs"][0]["results"]
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"], cursor_path)
+        self.assertEqual(results[0]["ruleId"], "MCP012")
+
+    def test_rules_metadata_carries_owasp_tag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_cursor_config(tmp, VULN_REMOTE_SERVER)
+
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp, "APPDATA": os.path.join(tmp, "AppData")}):
+                discovery = run_discovery(platform="linux")
+
+        sarif = json.loads(render_discovery_sarif(discovery))
+        rules = {r["id"]: r for r in sarif["runs"][0]["tool"]["driver"]["rules"]}
+        self.assertIn("MCP012", rules)
+        self.assertIn("owaspMcpTop10", rules["MCP012"]["properties"])
+
+    def test_no_findings_across_any_location_yields_empty_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp, "APPDATA": os.path.join(tmp, "AppData")}):
+                discovery = run_discovery(platform="linux")
+
+        sarif = json.loads(render_discovery_sarif(discovery))
+        self.assertEqual(sarif["runs"][0]["results"], [])
+
+
 class TestDiscoverCli(unittest.TestCase):
     def test_discover_json_exits_nonzero_when_findings_present(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -111,9 +147,14 @@ class TestDiscoverCli(unittest.TestCase):
                 exit_code = cli.main(["--discover", "--json", "--min-severity", "high"])
         self.assertEqual(exit_code, cli.EXIT_FINDINGS)
 
-    def test_discover_sarif_is_rejected(self):
-        exit_code = cli.main(["--discover", "--format", "sarif"])
-        self.assertEqual(exit_code, cli.EXIT_ERROR)
+    def test_discover_sarif_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_cursor_config(tmp, VULN_REMOTE_SERVER)
+
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp, "APPDATA": os.path.join(tmp, "AppData")}), \
+                 mock.patch("sys.platform", "linux"):
+                exit_code = cli.main(["--discover", "--format", "sarif", "--min-severity", "high"])
+        self.assertEqual(exit_code, cli.EXIT_FINDINGS)
 
     def test_discover_with_fix_is_rejected(self):
         exit_code = cli.main(["--discover", "--fix"])

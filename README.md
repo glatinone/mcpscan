@@ -211,8 +211,9 @@ step, so run it on each machine you want visibility into. It also only checks
 `mcp.json`. Project-scoped configs (`.cursor/mcp.json`, `.vscode/mcp.json`, a repo's
 own `.mcp.json`) already surface in a normal directory scan of that project, so
 `--discover` only adds the global/user-level configs a directory scan would never
-see. Supports `--format text` and `--json`; `sarif` and `--fix`/`--apply-fix` aren't
-wired up for discovery mode yet.
+see. Supports `--format text`, `json`, and `sarif` (one run, results point at each
+client's full config path so a SARIF viewer can tell Cursor's `mcp.json` apart from
+VS Code's); `--fix`/`--apply-fix` aren't wired up for discovery mode yet.
 
 ### `--fix`: mechanical, not magical
 
@@ -309,7 +310,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.7.0
+      - uses: glatinone/mcpscan@v0.8.0
         with:
           path: .
           min-severity: high
@@ -335,7 +336,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.7.0
+    rev: v0.8.0
     hooks:
       - id: mcpscan
 ```
@@ -371,8 +372,13 @@ demand — *before* trusting them. Register the `mcpscan-mcp` command with any M
 }
 ```
 
-It exposes one read-only tool, `scan(path, min_severity?)`, returning a JSON report.
-It only reads files — it never executes the code it scans.
+It exposes two read-only tools, both returning a JSON report and never executing
+the code they scan:
+
+- `scan(path, min_severity?)` — scan a file or directory.
+- `discover(min_severity?)` — scan known MCP client config locations on this
+  machine (see [`--discover`](#--discover-what-mcp-servers-are-actually-configured-on-this-machine)),
+  so an agent can ask "what's actually configured here" the same way it asks `scan`.
 
 ```bash
 # Quick stdio check:
@@ -481,10 +487,10 @@ ships from the tagged commit, not from `main`.
 - [x] ~~Map findings to OWASP MCP Top 10 category ids~~ (v0.6.0 — see [mapping table](#-owasp-mcp-top-10-mapping))
 - [x] ~~Close the OWASP MCP09:2025 (Shadow MCP Servers) gap~~ (`--discover`, v0.7.0 — see
   [above](#--discover-what-mcp-servers-are-actually-configured-on-this-machine))
-- [ ] `--discover` follow-ups: SARIF output, a `discover` tool on `mcpscan-mcp` so an
-  agent can ask "what's actually configured on this machine" the same way it asks
-  `scan`, and fleet-wide aggregation (needs an inventory/agent backend this project
-  doesn't have yet — out of scope for a single static scanner).
+- [x] ~~`--discover` follow-ups: SARIF output, a `discover` tool on `mcpscan-mcp`~~
+  (v0.8.0)
+- [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
+  backend this project doesn't have yet — out of scope for a single static scanner).
 
 Contributions welcome — open an issue or PR.
 

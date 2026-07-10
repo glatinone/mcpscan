@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-10
+
+### Added
+- **`--discover` now supports `--format sarif`**: one SARIF 2.1.0 run spanning every
+  discovered location, so `mcpscan --discover -f sarif -o discover.sarif` uploads to
+  GitHub code scanning the same way a normal scan does. Results point at each
+  client's full config path (`location.path`), not the bare filename a single-file
+  scan records — Cursor's and VS Code's configs are both named `mcp.json`, and the
+  bare filename alone wouldn't tell a SARIF viewer which one a result came from.
+  `mcpscan/report.py`'s SARIF rule/result builders (`_sarif_rules`, `_sarif_result`)
+  were factored out of `render_sarif()` so this reuses the same shape instead of
+  duplicating it.
+- **`discover` tool on `mcpscan-mcp`**: the MCP server now exposes two tools,
+  `scan(path, min_severity?)` and `discover(min_severity?)`, so an agent can ask
+  "what's actually configured on this machine" the same way it already asks `scan`.
+  Closes the second of the two `--discover` follow-ups noted in v0.7.0.
+
+Both follow-ups close out the `--discover` roadmap item from v0.7.0, except
+fleet-wide aggregation across machines, which needs an inventory/agent backend this
+project doesn't have and stays a documented future roadmap item, not a gap.
+
+5 new tests (3 for discovery-mode SARIF, 2 for the `discover` MCP tool); 61 tests
+passing (was 56). Dogfood self-scan clean.
+
 ## [0.7.0] - 2026-07-09
 
 ### Added
@@ -149,7 +173,8 @@ All notable changes to this project are documented here. The format is based on
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/glatinone/mcpscan/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/glatinone/mcpscan/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/glatinone/mcpscan/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/glatinone/mcpscan/compare/v0.4.1...v0.5.0

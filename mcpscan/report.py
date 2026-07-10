@@ -89,14 +89,52 @@ _SARIF_LEVEL = {
 }
 
 
-def render_sarif(report: Report) -> str:
+def _sarif_rules(findings) -> list:
+    """SARIF ``tool.driver.rules`` entries for the rule ids seen in *findings*.
+
+    Shared by :func:`render_sarif` and ``discover.render_discovery_sarif`` so
+    the rule-metadata shape (including the OWASP tag lookup) only lives once.
+    """
     # First OWASP tag seen per rule id — every finding from one rule carries
     # the same tag, so any occurrence works as the rule-level lookup.
     owasp_by_rule: Dict[str, str] = {}
-    for f in report.findings:
+    for f in findings:
         if f.owasp:
             owasp_by_rule.setdefault(f.rule_id, f.owasp)
-    rule_ids = sorted({f.rule_id for f in report.findings})
+    rule_ids = sorted({f.rule_id for f in findings})
+    return [
+        {
+            "id": rid,
+            **({"properties": {"tags": [owasp_by_rule[rid]],
+                                "owaspMcpTop10": owasp_by_rule[rid]}}
+               if rid in owasp_by_rule else {}),
+        }
+        for rid in rule_ids
+    ]
+
+
+def _sarif_result(f, uri: str) -> Dict:
+    """One SARIF ``results[]`` entry for finding *f*, located at *uri*.
+
+    *uri* is a separate parameter (not always ``f.path``) so discovery mode
+    can point results at the full client-config path instead of the bare
+    filename a single-file scan records.
+    """
+    return {
+        "ruleId": f.rule_id,
+        "level": _SARIF_LEVEL[f.severity],
+        "message": {"text": f"{f.title}. {f.detail}".strip()},
+        "locations": [{
+            "physicalLocation": {
+                "artifactLocation": {"uri": uri},
+                "region": {"startLine": max(1, f.line)},
+            }
+        }],
+        **({"properties": {"owaspMcpTop10": f.owasp}} if f.owasp else {}),
+    }
+
+
+def render_sarif(report: Report) -> str:
     sarif = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "version": "2.1.0",
@@ -104,31 +142,9 @@ def render_sarif(report: Report) -> str:
             "tool": {"driver": {
                 "name": "mcpscan",
                 "informationUri": "https://github.com/glatinone/mcpscan",
-                "rules": [
-                    {
-                        "id": rid,
-                        **({"properties": {"tags": [owasp_by_rule[rid]],
-                                            "owaspMcpTop10": owasp_by_rule[rid]}}
-                           if rid in owasp_by_rule else {}),
-                    }
-                    for rid in rule_ids
-                ],
+                "rules": _sarif_rules(report.findings),
             }},
-            "results": [
-                {
-                    "ruleId": f.rule_id,
-                    "level": _SARIF_LEVEL[f.severity],
-                    "message": {"text": f"{f.title}. {f.detail}".strip()},
-                    "locations": [{
-                        "physicalLocation": {
-                            "artifactLocation": {"uri": f.path},
-                            "region": {"startLine": max(1, f.line)},
-                        }
-                    }],
-                    **({"properties": {"owaspMcpTop10": f.owasp}} if f.owasp else {}),
-                }
-                for f in report.sorted()
-            ],
+            "results": [_sarif_result(f, f.path) for f in report.sorted()],
         }],
     }
     return json.dumps(sarif, indent=2)
