@@ -14,6 +14,7 @@ from . import insecure_deser     # noqa: F401,E402
 from . import insecure_transport # noqa: F401,E402
 from . import webfetch_domain    # noqa: F401,E402
 from . import auth_gaps          # noqa: F401,E402
+from . import tool_annotations   # noqa: F401,E402
 
 
 def all_rules():

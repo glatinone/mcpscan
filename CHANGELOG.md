@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-14
+
+### Added
+- **Rule MCP013 — tool risk annotation missing or contradicted.** Built on the MCP
+  spec's own structured `ToolAnnotations` schema (`readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, `openWorldHint`) instead of parsing freeform description prose —
+  a stable, standardized field is more precise and easier to test than
+  keyword-matching risk language. Two checks:
+  1. **Absence** — a tool detected calling a high-risk capability (subprocess/exec,
+     filesystem write/delete, outbound network, SQL) ships with none of the four
+     annotation keys at all.
+  2. **Contradiction** — a tool claims `readOnlyHint: true` or `destructiveHint:
+     false` while its own implementation calls one of those same capability sinks.
+     A stronger finding than absence: not "risk unstated" but "risk actively
+     misrepresented."
+
+  The MCP project's own docs are explicit that annotations are informational, not
+  enforced ("an untrusted server can claim `readOnlyHint: true` and delete your
+  files anyway") — check 2 is exactly that gap made concrete. Tool boundaries are a
+  line-window heuristic (a Python `@x.tool(...)` decorator, a raw `Tool(name=...)`
+  construction, or a JS/TS `registerTool(...)` / `.tool("name", ...)` call, up to the
+  next tool definition or a 40-line cap), not AST-derived — mcpscan stays
+  zero-dependency and regex-based, so this trades recall on unusual registration
+  patterns for zero new false-positive surface. Maps to
+  [MCP03:2025](#-owasp-mcp-top-10-mapping) (Tool Poisoning): both checks are about a
+  tool's own metadata misrepresenting what it does, the same category MCP002
+  already covers for hidden-instruction descriptions.
+
+  7 new tests (`TestToolAnnotationsRule`); 68 tests passing (was 61). Dogfood
+  self-scan clean.
+
 ## [0.8.0] - 2026-07-10
 
 ### Added

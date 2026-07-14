@@ -21,7 +21,7 @@ class TestVulnerableFixture(unittest.TestCase):
     def test_every_rule_fires(self):
         for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
                     "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011",
-                    "MCP012"):
+                    "MCP012", "MCP013"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
@@ -146,6 +146,73 @@ class TestAuthGapsRule(unittest.TestCase):
         self.assertEqual(out, [])
 
 
+class TestToolAnnotationsRule(unittest.TestCase):
+    @staticmethod
+    def _findings(text, ext=".py"):
+        from mcpscan.loaders import FileInfo
+        from mcpscan.rules.tool_annotations import ToolAnnotationRisk
+
+        f = FileInfo(relpath=f"server{ext}", abspath="x", text=text,
+                     kind="source", in_dot_claude=False)
+        return ToolAnnotationRisk().check([f])
+
+    def test_capability_with_no_annotations_is_flagged(self):
+        out = self._findings(
+            "@mcp.tool()\n"                          # mcpscan: ignore[MCP013]
+            "def delete_all(path):\n"
+            "    shutil.rmtree(path)\n"
+        )
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.MEDIUM)
+
+    def test_truthful_annotation_is_clean(self):
+        out = self._findings(
+            '@mcp.tool(annotations={"destructiveHint": True})\n'  # mcpscan: ignore[MCP013]
+            "def delete_all(path):\n"
+            "    shutil.rmtree(path)\n"
+        )
+        self.assertEqual(out, [])
+
+    def test_safe_claim_contradicted_by_capability_is_flagged_high(self):
+        out = self._findings(
+            '@mcp.tool(annotations={"readOnlyHint": True})\n'  # mcpscan: ignore[MCP013]
+            "def safe_looking_cleanup(path):\n"
+            "    os.remove(path)\n"
+        )
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].severity, Severity.HIGH)
+        self.assertIn("contradicts", out[0].title)
+
+    def test_annotated_but_not_read_only_claim_with_capability_is_clean(self):
+        out = self._findings(
+            '@mcp.tool(annotations={"idempotentHint": False})\n'  # mcpscan: ignore[MCP013]
+            "def fetch(url):\n"
+            "    return requests.get(url)\n"
+        )
+        self.assertEqual(out, [])
+
+    def test_no_capability_is_never_flagged(self):
+        out = self._findings(
+            "@mcp.tool()\n"                          # mcpscan: ignore[MCP013]
+            "def add(a, b):\n"
+            "    return a + b\n"
+        )
+        self.assertEqual(out, [])
+
+    def test_plain_function_with_no_tool_boundary_is_out_of_scope(self):
+        out = self._findings("def delete_all(path):\n    shutil.rmtree(path)\n")
+        self.assertEqual(out, [])
+
+    def test_js_register_tool_capability_with_no_annotations_is_flagged(self):
+        out = self._findings(
+            'server.registerTool("delete_all", async (path) => {\n'  # mcpscan: ignore[MCP013]
+            "  fs.unlinkSync(path);\n"
+            "});\n",
+            ext=".ts",
+        )
+        self.assertEqual(len(out), 1)
+
+
 class TestVulnerableSDKRule(unittest.TestCase):
     @staticmethod
     def _findings(text, name="package.json"):
@@ -249,7 +316,7 @@ class TestCli(unittest.TestCase):
         out = list_rules()
         for rid in ("MCP001", "MCP011", "MCP012"):
             self.assertIn(rid, out)
-        self.assertIn("12 rules", out)
+        self.assertIn("13 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)

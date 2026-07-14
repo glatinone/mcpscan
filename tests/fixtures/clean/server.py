@@ -12,3 +12,9 @@ def handle_tool(path: str) -> str:
 
 def disk_free() -> int:
     return shutil.disk_usage(".").free
+
+
+@mcp.tool(annotations={"destructiveHint": True})
+def delete_all(path: str) -> None:
+    # MCP013: declares its destructive capability truthfully — stays quiet.
+    shutil.rmtree(path)

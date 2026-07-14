@@ -81,6 +81,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP010** | 🔐 Disabled TLS | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
 | **MCP011** | 🌐 Over-broad WebFetch domain | Medium–High | [MCP02:2025](#-owasp-mcp-top-10-mapping) | `WebFetch(domain:*)`, a bare TLD wildcard (`*.com`), or `WebFetch` with no domain filter at all |
 | **MCP012** | 🔐 No auth / static token | Medium–High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
+| **MCP013** | 🏷️ Misleading tool annotation | Medium–High | [MCP03:2025](#-owasp-mcp-top-10-mapping) | A tool with a detected exec/filesystem-write/network/SQL capability that declares no `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` at all, or claims `readOnlyHint: true`/`destructiveHint: false` while its own code calls that capability |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -96,7 +97,7 @@ output.
 |---|---|---|
 | MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
 | MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011 |
-| MCP03:2025 | Tool Poisoning | MCP002 |
+| MCP03:2025 | Tool Poisoning | MCP002, MCP013 |
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
@@ -310,7 +311,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.8.0
+      - uses: glatinone/mcpscan@v0.9.0
         with:
           path: .
           min-severity: high
@@ -336,7 +337,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.8.0
+    rev: v0.9.0
     hooks:
       - id: mcpscan
 ```
@@ -489,6 +490,8 @@ ships from the tagged commit, not from `main`.
   [above](#--discover-what-mcp-servers-are-actually-configured-on-this-machine))
 - [x] ~~`--discover` follow-ups: SARIF output, a `discover` tool on `mcpscan-mcp`~~
   (v0.8.0)
+- [x] ~~Rule for MCP `ToolAnnotations` (`readOnlyHint`/`destructiveHint`/etc.) missing
+  or contradicted~~ (MCP013, v0.9.0)
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 
