@@ -8,6 +8,7 @@ import sys
 
 from . import __version__
 from .discover import render_discovery_json, render_discovery_sarif, render_discovery_text, run_discovery
+from .drift import DRIFT_RULE, check_drift
 from .findings import Severity
 from .fixer import apply_fixes, compute_fixes, render_preview
 from .report import render
@@ -48,7 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
 def list_rules() -> str:
     from . import rules as rules_pkg
     from .rules.base import Rule
-    rows = sorted(rules_pkg.all_rules(), key=lambda r: r.id)
+    # DRIFT_RULE is discovery-only (needs cross-run state) and deliberately
+    # isn't in rules_pkg's REGISTRY — merged in here so `--list-rules` still
+    # lists every rule id mcpscan can produce, not just the per-file ones.
+    rows = sorted([*rules_pkg.all_rules(), DRIFT_RULE], key=lambda r: r.id)
     lines = [f"{'ID':<8} {'SEVERITY':<9} {'FIX':<5} {'OWASP':<10} NAME",
               f"{'-'*8} {'-'*9} {'-'*5} {'-'*10} {'-'*40}"]
     for r in rows:
@@ -68,6 +72,7 @@ def _run_discover(args: argparse.Namespace, fmt: str, color: bool, threshold: Se
               file=sys.stderr)
 
     discovery = run_discovery()
+    check_drift(discovery)
     if fmt == "json":
         text = render_discovery_json(discovery)
     elif fmt == "sarif":

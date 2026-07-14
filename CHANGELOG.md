@@ -6,6 +6,51 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-14
+
+### Added
+- **Rule MCP014 — remote MCP server domain changed since the last `--discover`
+  run.** Closes a gap named in `research/2026-07-14.md`: Mitiga Labs (2026-04-10)
+  disclosed a malicious npm postinstall hook silently rewriting a trusted server's
+  URL in `~/.claude.json` to an attacker-controlled proxy, intercepting OAuth
+  bearer tokens in transit — while the server's *name* in the config never
+  changes, so a one-time scan can't tell "trusted server" from "trusted name,
+  hijacked endpoint." Anthropic classified the report out of scope, citing
+  "requires initial code execution" as a prerequisite; the silent config rewrite
+  is exactly what happens *after* that foothold, and it's the part a periodic
+  scan can still catch.
+
+  Every `--discover` run now diffs each remote server's URL hostname against a
+  local baseline (`~/.mcpscan/discover_baseline.json`, overridable via
+  `MCPSCAN_BASELINE_PATH`) — a fingerprint cache, not a maintained vendor-domain
+  allowlist, since the latter would go stale immediately and either miss real
+  vendors or false-positive on self-hosted deployments. First sighting of a
+  server name records the baseline with no finding; a domain change raises
+  **MCP014** (high severity, `MCP04:2025` — Supply Chain / Dependency Tampering)
+  and the new domain becomes the baseline going forward, so this alerts once per
+  change rather than permanently locking a server to its first-ever domain — a
+  legitimate migration and a real hijack both trip it exactly once, which is the
+  point of a tripwire. Local, stdio-launched servers have no domain and stay out
+  of scope, the same boundary MCP012 already draws.
+
+  Deliberately not a normal per-file `Rule`: this check needs state that
+  persists *across* runs, which a stateless rule contract doesn't model. New
+  `mcpscan/drift.py` holds the baseline read/write/diff logic and a
+  `DomainDriftRule` descriptor (id/name/severity/owasp only, not registered in
+  the normal rule registry) so `MCP014` still shows up in `--list-rules` and
+  flows through the existing SARIF/JSON/text renderers unchanged.
+
+  Verified end-to-end against a real subprocess invocation of the CLI (not just
+  unit tests): a two-run scenario reproducing the disclosed attack pattern
+  exactly (server name `"github"` unchanged, URL rewritten to an
+  attacker-controlled domain) correctly flips the second run's exit code from
+  `0` to `1` with the MCP014 finding printed. 11 new tests
+  (`tests/test_drift.py`: first-sighting baseline write, domain-change finding,
+  alert-once-then-trust-new-state, unchanged-domain no-op, stdio-server
+  out-of-scope, corrupt-baseline graceful degradation, env-var override,
+  `--list-rules` inclusion, and a CLI-level two-invocation exit-code test); 79
+  tests passing (was 68). Dogfood self-scan clean.
+
 ## [0.9.0] - 2026-07-14
 
 ### Added
@@ -204,7 +249,9 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/glatinone/mcpscan/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/glatinone/mcpscan/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/glatinone/mcpscan/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/glatinone/mcpscan/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/glatinone/mcpscan/compare/v0.5.0...v0.6.0

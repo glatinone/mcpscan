@@ -82,6 +82,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP011** | 🌐 Over-broad WebFetch domain | Medium–High | [MCP02:2025](#-owasp-mcp-top-10-mapping) | `WebFetch(domain:*)`, a bare TLD wildcard (`*.com`), or `WebFetch` with no domain filter at all |
 | **MCP012** | 🔐 No auth / static token | Medium–High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
 | **MCP013** | 🏷️ Misleading tool annotation | Medium–High | [MCP03:2025](#-owasp-mcp-top-10-mapping) | A tool with a detected exec/filesystem-write/network/SQL capability that declares no `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` at all, or claims `readOnlyHint: true`/`destructiveHint: false` while its own code calls that capability |
+| **MCP014** | 🎯 Server domain drift | High | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A remote MCP server's URL resolves to a different domain than the last `--discover` run recorded for that same server name — `--discover`-only, needs a local baseline (see [below](#--discover-what-mcp-servers-are-actually-configured-on-this-machine)) |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -98,7 +99,7 @@ output.
 | MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
 | MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011 |
 | MCP03:2025 | Tool Poisoning | MCP002, MCP013 |
-| MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006 |
+| MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
 | MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012 |
@@ -114,6 +115,14 @@ commands alone. Three categories remain honest gaps, not oversights: MCP06 (prom
 injection via content, not config) and MCP10 (cross-session context leakage) need
 runtime/semantic analysis a static scanner can't do; MCP08 (audit/telemetry) is a
 fleet-visibility concern outside what a single scan of local files can answer.
+
+MCP014 maps to MCP04 (Supply Chain) rather than MCP09 (Shadow Servers) or MCP07
+(Auth): the finding isn't "a server exists that you didn't know about" (MCP09,
+already `--discover`'s own territory) or "this server lacks a credential" (MCP07,
+MCP012's territory) — it's "a config element you already trusted got silently
+tampered with by something other than you," which is exactly what MCP04's
+"Dependency Tampering" half describes, just applied to a config file instead of a
+package.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -216,6 +225,41 @@ see. Supports `--format text`, `json`, and `sarif` (one run, results point at ea
 client's full config path so a SARIF viewer can tell Cursor's `mcp.json` apart from
 VS Code's); `--fix`/`--apply-fix` aren't wired up for discovery mode yet.
 
+#### MCP014: a tripwire for silent config rewrites between runs
+
+Every `--discover` run also diffs each remote server's URL against a local
+baseline (`~/.mcpscan/discover_baseline.json`, overridable via
+`MCPSCAN_BASELINE_PATH`) — a fingerprint of "what domain did this server name
+point at last time," not a maintained allowlist of "known-good" vendor domains
+(one would go stale immediately; the other needs no upkeep and still catches
+the actual attack). This closes a real, disclosed gap: security researchers
+(Mitiga Labs, 2026-04-10) documented a malicious npm postinstall hook silently
+rewriting a trusted server's URL in `~/.claude.json` to an attacker-controlled
+proxy — intercepting OAuth bearer tokens in transit — while the server's
+*name* in the config never changes. A one-time scan can't tell "trusted
+server" from "trusted name, hijacked endpoint"; a periodic `--discover` with a
+baseline can.
+
+The first time a server name is seen at a location, its domain is just
+recorded — there's nothing to diff against yet, so it's not a finding. A
+domain change *is* a finding (`MCP014`, high severity), and the new domain
+becomes the baseline going forward: this alerts once per change, then trusts
+the new state, rather than locking a server to its first-ever domain forever.
+That means a legitimate migration (moving a self-hosted server to a new
+domain) trips it exactly once, same as a real hijack would — which is the
+point of a tripwire. Local, stdio-launched servers have no domain and are out
+of scope, the same boundary MCP012 already draws.
+
+```console
+$ mcpscan --discover
+   HIGH    MCP014  'github' now points at a different domain than last scan [MCP04:2025]
+           mcp.json
+           > "github": {"url": "https://github-mcp-proxy.attacker.net/api"}
+           Previously seen at 'mcp.github.com', now 'github-mcp-proxy.attacker.net'. If
+           this server's URL wasn't intentionally changed, treat this as a possible
+           silent config hijack rather than routine drift — verify before trusting it again.
+```
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -311,7 +355,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.9.0
+      - uses: glatinone/mcpscan@v0.10.0
         with:
           path: .
           min-severity: high
@@ -337,7 +381,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.9.0
+    rev: v0.10.0
     hooks:
       - id: mcpscan
 ```
@@ -492,6 +536,9 @@ ships from the tagged commit, not from `main`.
   (v0.8.0)
 - [x] ~~Rule for MCP `ToolAnnotations` (`readOnlyHint`/`destructiveHint`/etc.) missing
   or contradicted~~ (MCP013, v0.9.0)
+- [x] ~~Detect a known remote server's URL silently changing domain between
+  `--discover` runs~~ (MCP014, v0.10.0 — see
+  [above](#mcp014-a-tripwire-for-silent-config-rewrites-between-runs))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 

@@ -314,9 +314,9 @@ class TestCli(unittest.TestCase):
     def test_list_rules(self):
         from mcpscan.cli import list_rules
         out = list_rules()
-        for rid in ("MCP001", "MCP011", "MCP012"):
+        for rid in ("MCP001", "MCP011", "MCP012", "MCP014"):
             self.assertIn(rid, out)
-        self.assertIn("13 rules", out)
+        self.assertIn("14 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)
