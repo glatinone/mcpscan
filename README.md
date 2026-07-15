@@ -83,6 +83,8 @@ mcpscan ./path-to-an-mcp-server
 | **MCP012** | 🔐 No auth / static token | Medium–High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A remote (`http(s)://`) MCP server entry with no auth header at all, or a bearer token/API key hardcoded as a literal instead of `${ENV_VAR}` |
 | **MCP013** | 🏷️ Misleading tool annotation | Medium–High | [MCP03:2025](#-owasp-mcp-top-10-mapping) | A tool with a detected exec/filesystem-write/network/SQL capability that declares no `readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint` at all, or claims `readOnlyHint: true`/`destructiveHint: false` while its own code calls that capability |
 | **MCP014** | 🎯 Server domain drift | High | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A remote MCP server's URL resolves to a different domain than the last `--discover` run recorded for that same server name — `--discover`-only, needs a local baseline (see [below](#--discover-what-mcp-servers-are-actually-configured-on-this-machine)) |
+| **MCP015** | 🧬 Workflow script injection | High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | An issue/PR title, body, comment, or branch name interpolated directly as `${{ ... }}` inside a `.github/workflows/*.yml` `run:`/`script:` step instead of going through an `env:` variable first |
+| **MCP016** | 🎣 Pwn request | Critical | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A workflow triggers on `pull_request_target` (base-repo secrets, even for a fork PR) and checks out the fork's own head commit with `actions/checkout` |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -99,8 +101,8 @@ output.
 | MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
 | MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011 |
 | MCP03:2025 | Tool Poisoning | MCP002, MCP013 |
-| MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014 |
-| MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009 |
+| MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016 |
+| MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
 | MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
@@ -123,6 +125,14 @@ MCP012's territory) — it's "a config element you already trusted got silently
 tampered with by something other than you," which is exactly what MCP04's
 "Dependency Tampering" half describes, just applied to a config file instead of a
 package.
+
+MCP015 maps to MCP05 (Command Injection & Execution) for the same reason MCP001
+does: an attacker's issue/PR/comment text ends up executing as shell code, just
+via `${{ }}` interpolation instead of an `f-string` or template literal. MCP016
+maps to MCP04 (Supply Chain), not MCP05 or MCP07: the vulnerability isn't the
+command itself, it's that untrusted fork *code* — not just data — gets executed
+with the base repository's trust level, the same "something you didn't build got
+to run with your permissions" shape as a compromised dependency.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -260,6 +270,52 @@ $ mcpscan --discover
            silent config hijack rather than routine drift — verify before trusting it again.
 ```
 
+### MCP015/MCP016: your CI workflows are now in scope too
+
+Every prior rule looked at an MCP server's own source or config. MCP015 and
+MCP016 are the first to look at `.github/workflows/*.yml` instead — because
+the same root pattern the 2026 research keeps surfacing across vendors
+(Claude Code Action, Copilot, Gemini, Codex "GitLost") isn't really about MCP
+servers at all: an agentic or automated CI workflow treats untrusted
+issue/PR/comment *content* as *instructions or code*, instead of data.
+
+**MCP015 — script injection.** An attacker-controlled context expression (an
+issue title, PR body, review comment, branch name) gets interpolated directly
+as `${{ ... }}` inside a `run:`/`script:` step instead of being passed through
+an `env:` variable first:
+
+```console
+$ mcpscan .
+   HIGH    MCP015  Untrusted event content interpolated directly into a shell step [MCP05:2025]
+           .github/workflows/triage.yml:14
+           > echo "${{ github.event.issue.title }}"
+```
+
+The fix is the pattern [GitHub's own hardening guide](https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections)
+documents: assign the value to `env:` first, then reference it as `$VAR` in the
+script. A workflow that already does this never matches the rule — the raw
+`${{ github.event... }}` form never appears inside the execution step itself.
+
+**MCP016 — "pwn request."** A workflow triggers on `pull_request_target`
+(which runs with the *base* repository's secrets and write-scoped token, even
+for a fork's PR) and then checks out the fork's own head commit:
+
+```console
+   CRITICAL MCP016  pull_request_target workflow checks out untrusted fork code [MCP04:2025]
+            .github/workflows/triage.yml:11
+            > ref: ${{ github.event.pull_request.head.sha }}
+```
+
+The fork's code now executes with the base repo's trust level — see [GitHub
+Security Lab's "Preventing pwn requests"](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)
+for the canonical writeup. Switching to the `pull_request` trigger, or gating
+the job behind a required reviewer/environment, both close the gap.
+
+Both checks are line-window heuristics over the raw YAML text, not a full YAML
+parse, keeping mcpscan zero-dependency; both stay quiet on the safe pattern
+they're checking for, not just the unsafe one, so they only fire on the
+specific `${{ }}` / `ref:` shapes documented above.
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -355,7 +411,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.10.0
+      - uses: glatinone/mcpscan@v0.11.0
         with:
           path: .
           min-severity: high
@@ -381,7 +437,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.10.0
+    rev: v0.11.0
     hooks:
       - id: mcpscan
 ```
@@ -436,7 +492,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      13 independent rules, each yielding Findings
+   rule registry      15 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -539,6 +595,10 @@ ships from the tagged commit, not from `main`.
 - [x] ~~Detect a known remote server's URL silently changing domain between
   `--discover` runs~~ (MCP014, v0.10.0 — see
   [above](#mcp014-a-tripwire-for-silent-config-rewrites-between-runs))
+- [x] ~~New rule category: CI workflow scanning for untrusted content flowing
+  into GitHub Actions execution~~ (MCP015 script injection, MCP016 pwn
+  request, v0.11.0 — see
+  [above](#mcp015mcp016-your-ci-workflows-are-now-in-scope-too))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 

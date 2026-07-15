@@ -1,0 +1,17 @@
+name: triage
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    branches: [main]
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: React to the report
+        run: |
+          echo "Handling: ${{ github.event.issue.title }}"
+          echo "${{ github.event.comment.body }}" >> $GITHUB_STEP_SUMMARY

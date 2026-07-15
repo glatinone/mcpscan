@@ -1,0 +1,14 @@
+name: ci
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Handle issue title safely
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          echo "Handling: $ISSUE_TITLE"

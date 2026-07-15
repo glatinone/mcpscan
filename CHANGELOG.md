@@ -6,6 +6,56 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-07-15
+
+### Added
+- **New rule category: CI workflow scanning (`.github/workflows/*.yml`).** The
+  first mcpscan rules to look at a file type other than an MCP server's own
+  source or config. Motivated by `research/2026-07-14.md` Pain Radar #1 and
+  `research/2026-07-15.md`'s top compounding opportunity: a public GitHub
+  issue can hijack agentic CI workflows across multiple vendors (Flatt
+  Security's Claude Code Action disclosure, the 2026-07-07 "GitLost"
+  disclosure, Microsoft's Copilot confirmation), all sharing the same root
+  cause — untrusted issue/PR/comment content gets treated as instructions or
+  code instead of data. Two textbook, well-documented GitHub Actions
+  vulnerability classes now have dedicated checks:
+
+  - **MCP015 — script injection.** An attacker-controlled context expression
+    (an issue title, PR body, review comment, branch name) interpolated
+    directly as `${{ ... }}` inside a `run:`/`script:` step instead of being
+    passed through an `env:` variable first. See [GitHub's hardening
+    guide](https://docs.github.com/actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections).
+    High severity, `MCP05:2025` (Command Injection & Execution).
+  - **MCP016 — "pwn request."** A workflow triggers on `pull_request_target`
+    (base-repo secrets and write-scoped token, even for a fork PR) and checks
+    out the fork's own head commit via `actions/checkout` — the fork's code
+    now executes with the base repo's trust level. See [GitHub Security
+    Lab's "Preventing pwn
+    requests"](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/).
+    Critical severity, `MCP04:2025` (Supply Chain & Dependency Tampering).
+
+  Both are line-window heuristics over the raw YAML text, not a full YAML
+  parse, keeping mcpscan zero-dependency — the same regex-based style every
+  other rule already uses. Both are deliberately conservative: a workflow that
+  already follows the safe pattern (env-var indirection for MCP015; the
+  `pull_request` trigger or a reviewer-gated environment for MCP016) never
+  matches, since the specific unsafe shape being checked for simply isn't
+  present in safe code.
+
+  New `tests/test_workflow_injection.py` (12 tests): direct interpolation in
+  both block and single-line `run:` steps, `env:` indirection staying clean,
+  `github-script`'s `script:` block as an equivalent sink, trusted contexts
+  (`matrix.*`) staying clean, non-workflow YAML files out of scope, step
+  boundaries correctly ending a block/lookahead scan, `pull_request_target` in
+  both mapping and list trigger forms, `pull_request` (without `_target`)
+  staying clean, and a fork-checkout-free `pull_request_target` job staying
+  clean. New vulnerable/clean workflow YAML fixtures
+  (`tests/fixtures/vulnerable/.github/workflows/triage.yml`,
+  `tests/fixtures/clean/.github/workflows/ci.yml`). 91 tests passing (was 79).
+  Dogfood self-scan clean — this repo's own `ci.yml`/`release.yml` use neither
+  unsafe pattern. Verified end-to-end with the real CLI against both fixture
+  directories, not just unit tests.
+
 ## [0.10.0] - 2026-07-14
 
 ### Added
@@ -249,7 +299,8 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/glatinone/mcpscan/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/glatinone/mcpscan/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/glatinone/mcpscan/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/glatinone/mcpscan/compare/v0.7.0...v0.8.0

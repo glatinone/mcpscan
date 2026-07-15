@@ -21,7 +21,7 @@ class TestVulnerableFixture(unittest.TestCase):
     def test_every_rule_fires(self):
         for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
                     "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011",
-                    "MCP012", "MCP013"):
+                    "MCP012", "MCP013", "MCP015", "MCP016"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
@@ -314,9 +314,9 @@ class TestCli(unittest.TestCase):
     def test_list_rules(self):
         from mcpscan.cli import list_rules
         out = list_rules()
-        for rid in ("MCP001", "MCP011", "MCP012", "MCP014"):
+        for rid in ("MCP001", "MCP011", "MCP012", "MCP014", "MCP015", "MCP016"):
             self.assertIn(rid, out)
-        self.assertIn("14 rules", out)
+        self.assertIn("16 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)
