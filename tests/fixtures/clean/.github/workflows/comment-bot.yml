@@ -1,0 +1,12 @@
+name: comment-bot
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  respond:
+    runs-on: ubuntu-latest
+    environment: comment-bot-approval
+    steps:
+      - name: Notify a deployment service
+        run: |
+          curl -X POST -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}" https://api.example.com/notify

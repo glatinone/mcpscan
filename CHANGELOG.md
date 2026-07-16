@@ -6,6 +6,70 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-16
+
+### Added
+- **MCP017 — untrusted-trigger workflow reaches a custom secret with no
+  environment or identity gate.** The identity-based-trust half of the
+  CI-workflow rule category deliberately deferred from v0.11.0. Motivated by
+  `research/2026-07-16.md`'s top compounding opportunity: "Cordyceps," a
+  2026-07 disclosure that scanned roughly 30,000 high-impact repositories and
+  confirmed 300+ exploitable on this exact shape (workflows granting an
+  untrusted PR/issue trigger more reach than it needs, with no special access
+  required to exploit it) — the same root cause as the 2026-07-07 "GitLost"
+  disclosure and MCP015/MCP016, now independently confirmed at scale across
+  real organizations (Microsoft, Google, Apache, Cloudflare, the Python
+  Software Foundation).
+
+  Scoped narrower than the full "model every bot's own trust config" version
+  the v0.11.0 TODO originally described (which needs per-Action schema
+  knowledge a generic scanner can't verify without guessing): checks the
+  generic, action-agnostic shape Cordyceps actually confirmed — a workflow
+  triggered by untrusted content (`pull_request_target`, `issue_comment`,
+  `issues`, `discussion`, `discussion_comment`) that references a *custom*
+  secret (`${{ secrets.SOMETHING }}`) with neither of the two
+  GitHub-documented gates present anywhere in the file: a protected
+  `environment:` (requires manual reviewer approval before the job's secrets
+  become available) or an explicit actor/`author_association` check.
+  Deliberately excludes `${{ secrets.GITHUB_TOKEN }}` — that token's scope is
+  already governed by the `permissions:` block, a distinct mechanism MCP016
+  already reasons about; custom secrets aren't scoped by `permissions:` at
+  all, which is exactly why the environment/actor gates matter here. High
+  severity, `MCP02:2025` (Privilege Escalation via Scope Creep — the same
+  category as MCP004/MCP011, since the root cause is a workflow granting more
+  reach than it needs, not a code-execution primitive).
+
+  Same line-window heuristic style as MCP015/MCP016, in the same
+  `mcpscan/rules/workflow_injection.py` file. Found and fixed a real bug while
+  building this: the first draft's `environment:` and actor-gate regexes used
+  `^` against a `"\n".join(lines)` string without `re.MULTILINE`, so the
+  anchor only matched the very start of the file — every gate was silently
+  ignored regardless of where it appeared, which meant the finding fired even
+  on workflows that correctly declared an `environment:` gate. Caught by the
+  new unit tests before this shipped, not after.
+
+  9 new tests (`tests/test_workflow_injection.py`): issue_comment and
+  pull_request_target triggers with a custom secret and no gate both firing,
+  list-form `on:` triggers, `GITHUB_TOKEN`-only staying clean, an
+  `environment:` gate suppressing the finding, an `author_association` gate
+  suppressing it, a `github.actor` allowlist gate suppressing it, a trusted
+  (`pull_request`) trigger staying clean, and no-secret-reference staying
+  clean. New vulnerable fixture
+  (`tests/fixtures/vulnerable/.github/workflows/secrets_reach.yml`) and clean
+  fixture (`tests/fixtures/clean/.github/workflows/comment-bot.yml`, gated
+  behind a real `environment:` key) demonstrating both the vulnerable and the
+  fixed pattern side by side. Found and fixed a second bug while building the
+  clean fixture: its original wording ("Notify an external webhook") tripped
+  the unrelated MCP003 hooks rule, since that rule's scope check is
+  `"hook" in f.text.lower()` and "webhook" contains "hook" as a substring —
+  reworded to "Notify a deployment service" instead of narrowing MCP003's
+  scope check, since MCP003's broad text-based scope is itself intentional
+  (a hook-like command can appear anywhere, not just `.claude/` config).
+  100 tests passing (was 91). Dogfood self-scan clean. Verified end-to-end
+  with the real CLI against both fixture directories and this repo's own
+  `.github/workflows/*.yml` (neither `ci.yml` nor `release.yml` trigger on an
+  untrusted event, so neither is affected) before committing.
+
 ## [0.11.0] - 2026-07-15
 
 ### Added
@@ -299,7 +363,8 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/glatinone/mcpscan/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/glatinone/mcpscan/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/glatinone/mcpscan/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/glatinone/mcpscan/compare/v0.8.0...v0.9.0

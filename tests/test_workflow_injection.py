@@ -1,9 +1,14 @@
-"""Tests for MCP015 (script injection) and MCP016 (pwn request checkout)."""
+"""Tests for MCP015 (script injection), MCP016 (pwn request checkout), and
+MCP017 (untrusted-trigger secret reachability)."""
 
 import unittest
 
 from mcpscan.loaders import FileInfo
-from mcpscan.rules.workflow_injection import PwnRequestCheckout, WorkflowScriptInjection
+from mcpscan.rules.workflow_injection import (
+    PwnRequestCheckout,
+    UntrustedTriggerSecretReachability,
+    WorkflowScriptInjection,
+)
 
 
 def _file(text: str, relpath: str = ".github/workflows/ci.yml") -> FileInfo:
@@ -180,6 +185,124 @@ class TestPwnRequestCheckout(unittest.TestCase):
             "      - uses: some/other-action@v1\n"
             "        with:\n"
             "          ref: ${{ github.event.pull_request.head.sha }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+
+class TestUntrustedTriggerSecretReachability(unittest.TestCase):
+    rule = UntrustedTriggerSecretReachability()
+
+    def test_issue_comment_trigger_with_custom_secret_and_no_gate_fires(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "    types: [created]\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - run: curl -H \"Auth: ${{ secrets.DEPLOY_TOKEN }}\" x\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "MCP017")
+        self.assertEqual(findings[0].owasp, "MCP02:2025")
+
+    def test_pull_request_target_with_custom_secret_and_no_gate_fires(self):
+        text = (
+            "on:\n"
+            "  pull_request_target:\n"
+            "jobs:\n"
+            "  build:\n"
+            "    steps:\n"
+            "      - run: echo \"${{ secrets.NPM_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_list_form_trigger_fires(self):
+        text = (
+            "on: [issue_comment]\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - run: echo \"${{ secrets.DEPLOY_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_github_token_only_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - run: echo \"${{ secrets.GITHUB_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_environment_gate_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    environment: comment-bot-approval\n"
+            "    steps:\n"
+            "      - run: echo \"${{ secrets.DEPLOY_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_author_association_gate_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - if: contains(fromJSON('[\"OWNER\",\"MEMBER\"]'), "
+            "github.event.comment.author_association)\n"
+            "        run: echo \"${{ secrets.DEPLOY_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_actor_allowlist_gate_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - if: github.actor == 'trusted-bot'\n"
+            "        run: echo \"${{ secrets.DEPLOY_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_trusted_trigger_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  pull_request:\n"
+            "jobs:\n"
+            "  build:\n"
+            "    steps:\n"
+            "      - run: echo \"${{ secrets.NPM_TOKEN }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_no_secret_reference_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  issue_comment:\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - run: echo hi\n"
         )
         findings = self.rule.check([_file(text)])
         self.assertEqual(findings, [])

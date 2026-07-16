@@ -85,6 +85,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP014** | 🎯 Server domain drift | High | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A remote MCP server's URL resolves to a different domain than the last `--discover` run recorded for that same server name — `--discover`-only, needs a local baseline (see [below](#--discover-what-mcp-servers-are-actually-configured-on-this-machine)) |
 | **MCP015** | 🧬 Workflow script injection | High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | An issue/PR title, body, comment, or branch name interpolated directly as `${{ ... }}` inside a `.github/workflows/*.yml` `run:`/`script:` step instead of going through an `env:` variable first |
 | **MCP016** | 🎣 Pwn request | Critical | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A workflow triggers on `pull_request_target` (base-repo secrets, even for a fork PR) and checks out the fork's own head commit with `actions/checkout` |
+| **MCP017** | 🗝️ Untrusted-trigger secret reachability | High | [MCP02:2025](#-owasp-mcp-top-10-mapping) | A workflow triggered by untrusted content (`pull_request_target`, `issue_comment`, `issues`, `discussion`, `discussion_comment`) references a custom secret (`${{ secrets.X }}`) with no protected `environment:` and no actor/`author_association` gate anywhere in the file |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -99,7 +100,7 @@ output.
 | OWASP category | Title | mcpscan coverage |
 |---|---|---|
 | MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
-| MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011 |
+| MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011, MCP017 |
 | MCP03:2025 | Tool Poisoning | MCP002, MCP013 |
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
@@ -133,6 +134,19 @@ maps to MCP04 (Supply Chain), not MCP05 or MCP07: the vulnerability isn't the
 command itself, it's that untrusted fork *code* — not just data — gets executed
 with the base repository's trust level, the same "something you didn't build got
 to run with your permissions" shape as a compromised dependency.
+
+MCP017 maps to MCP02 (Scope Creep), the same category as MCP004/MCP011: the root
+cause is a workflow granting an untrusted trigger more reach than it needs, not a
+code-execution primitive (MCP015/MCP016's territory) or a missing credential
+(MCP07's). It's deliberately narrower than "model every third-party Action's own
+trust config" — it only checks the generic, action-agnostic shape a 2026-07
+disclosure ("Cordyceps") confirmed exploitable at scale across ~30,000 scanned
+repositories: an untrusted-content trigger reaching a *custom* secret with neither
+of the two GitHub-documented gates (a protected `environment:`, or an explicit
+actor/`author_association` check) present anywhere in the file. `GITHUB_TOKEN`
+usage alone doesn't trigger this — that token is already scoped by the
+`permissions:` block, a separate mechanism; custom secrets aren't scoped by
+`permissions:` at all, which is exactly why the other two gates matter here.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -270,13 +284,13 @@ $ mcpscan --discover
            silent config hijack rather than routine drift — verify before trusting it again.
 ```
 
-### MCP015/MCP016: your CI workflows are now in scope too
+### MCP015/MCP016/MCP017: your CI workflows are now in scope too
 
-Every prior rule looked at an MCP server's own source or config. MCP015 and
-MCP016 are the first to look at `.github/workflows/*.yml` instead — because
-the same root pattern the 2026 research keeps surfacing across vendors
-(Claude Code Action, Copilot, Gemini, Codex "GitLost") isn't really about MCP
-servers at all: an agentic or automated CI workflow treats untrusted
+Every prior rule looked at an MCP server's own source or config. MCP015,
+MCP016, and MCP017 are the first to look at `.github/workflows/*.yml` instead
+— because the same root pattern the 2026 research keeps surfacing across
+vendors (Claude Code Action, Copilot, Gemini, Codex "GitLost") isn't really
+about MCP servers at all: an agentic or automated CI workflow treats untrusted
 issue/PR/comment *content* as *instructions or code*, instead of data.
 
 **MCP015 — script injection.** An attacker-controlled context expression (an
@@ -311,10 +325,36 @@ Security Lab's "Preventing pwn requests"](https://securitylab.github.com/resourc
 for the canonical writeup. Switching to the `pull_request` trigger, or gating
 the job behind a required reviewer/environment, both close the gap.
 
-Both checks are line-window heuristics over the raw YAML text, not a full YAML
-parse, keeping mcpscan zero-dependency; both stay quiet on the safe pattern
-they're checking for, not just the unsafe one, so they only fire on the
-specific `${{ }}` / `ref:` shapes documented above.
+**MCP017 — untrusted-trigger secret reachability.** The generic pattern behind
+"Cordyceps," a 2026-07 disclosure that scanned ~30,000 high-impact repositories
+and confirmed 300+ exploitable on this exact shape: a workflow triggered by
+untrusted content (`pull_request_target`, `issue_comment`, `issues`,
+`discussion`, `discussion_comment`) references a *custom* secret with no
+identity gate anywhere in the file:
+
+```console
+$ mcpscan .
+   HIGH    MCP017  Untrusted-trigger workflow reaches a custom secret with no gate [MCP02:2025]
+           .github/workflows/comment-bot.yml:7
+           > curl -H "Authorization: Bearer ${{ secrets.DEPLOY_TOKEN }}" https://api.example.com/notify
+```
+
+`GITHUB_TOKEN` alone doesn't trigger this — its scope is already governed by
+the workflow's `permissions:` block, a separate mechanism MCP016 already
+reasons about. Custom secrets (API keys, deploy tokens) aren't scoped by
+`permissions:` at all, so the real gates are the two GitHub actually
+documents: a protected `environment:` (Settings → Environments, require
+reviewers before the job runs) or an explicit actor/`author_association`
+check before the secret is used. Either one present anywhere in the file
+suppresses the finding. This is deliberately narrower than modeling every
+third-party GitHub Action's own "who do you trust" config (a harder problem
+needing per-action schema knowledge) — it only checks the generic,
+action-agnostic shape Cordyceps actually confirmed at scale.
+
+All three checks are line-window heuristics over the raw YAML text, not a
+full YAML parse, keeping mcpscan zero-dependency; they stay quiet on the safe
+pattern they're checking for, not just the unsafe one, so they only fire on
+the specific shapes documented above.
 
 ### `--fix`: mechanical, not magical
 
@@ -411,7 +451,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.11.0
+      - uses: glatinone/mcpscan@v0.12.0
         with:
           path: .
           min-severity: high
@@ -437,7 +477,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.11.0
+    rev: v0.12.0
     hooks:
       - id: mcpscan
 ```
@@ -492,7 +532,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      15 independent rules, each yielding Findings
+   rule registry      16 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -598,7 +638,11 @@ ships from the tagged commit, not from `main`.
 - [x] ~~New rule category: CI workflow scanning for untrusted content flowing
   into GitHub Actions execution~~ (MCP015 script injection, MCP016 pwn
   request, v0.11.0 — see
-  [above](#mcp015mcp016-your-ci-workflows-are-now-in-scope-too))
+  [above](#mcp015mcp016mcp017-your-ci-workflows-are-now-in-scope-too))
+- [x] ~~Identity-based-trust detection: an untrusted-trigger workflow reaching a
+  custom secret with no environment/actor gate~~ (MCP017, v0.12.0, the generic
+  "Cordyceps" pattern — see
+  [above](#mcp015mcp016mcp017-your-ci-workflows-are-now-in-scope-too))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 

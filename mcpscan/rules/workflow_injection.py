@@ -1,4 +1,4 @@
-"""MCP015 / MCP016 — untrusted content flowing into GitHub Actions execution.
+"""MCP015 / MCP016 / MCP017 — untrusted content flowing into GitHub Actions.
 
 The first rule category to look at `.github/workflows/*.yml` rather than an MCP
 server's own source or config. Motivated by `research/2026-07-14.md` Pain Radar
@@ -6,10 +6,9 @@ server's own source or config. Motivated by `research/2026-07-14.md` Pain Radar
 cause (an agentic/automated CI workflow treats untrusted issue/PR/comment
 content as instructions or code instead of data) has now been independently
 disclosed across at least four vendors (Claude Code Action, Copilot, Gemini,
-Codex "GitLost"). Both checks below are the two textbook, well-documented
-GitHub Actions vulnerability classes that produce that same outcome, and both
-are detectable as a line-window heuristic over the raw YAML text — no YAML
-parser needed, consistent with mcpscan staying zero-dependency.
+Codex "GitLost"). All three checks below are detectable as a line-window
+heuristic over the raw YAML text — no YAML parser needed, consistent with
+mcpscan staying zero-dependency.
 
 MCP015 — script injection: an attacker-controlled context expression (an issue
 title, PR body, review comment, branch name, etc.) is interpolated directly as
@@ -28,11 +27,34 @@ PR) and then checks out the fork's own head commit (`actions/checkout` with
 code now executes with the base repo's trust level. See GitHub Security Lab,
 "Keeping your GitHub Actions and workflows secure: Preventing pwn requests."
 
-Both checks are deliberately conservative: they only fire on the raw
-`${{ }}` interpolation / literal `ref:` shapes above, not on every possible
-indirect path (e.g. an intermediate action re-exporting the same data under a
-new name) — matching the rest of mcpscan's "high signal over recall" design
-principle.
+MCP017 — identity-based-trust / excess-scope reachability, the pattern
+`research/2026-07-16.md`'s top compounding opportunity named "Cordyceps": a
+2026-07 disclosure scanning ~30,000 high-impact repositories found 300+
+confirmed exploitable on this exact shape (workflows granting a
+PR/issue-triggered job more permission than it needs, with no identity check
+gating it). Deliberately narrower than the "model every bot's trust config"
+version deferred from v0.11.0 (`backlog.md`/`projects/mcpscan.md` TODO):
+instead of guessing what config key means "trust this actor" per third-party
+Action, this checks the generic, action-agnostic shape Cordyceps actually
+confirmed — a workflow triggered by untrusted content (`pull_request_target`,
+`issue_comment`, `issues`, `discussion`, `discussion_comment`) that also
+references a *custom* secret (`${{ secrets.SOMETHING }}`, not the auto-scoped
+`GITHUB_TOKEN` — that one is already governed by the `permissions:` block, a
+distinct mechanism MCP016 already reasons about) with neither of the two
+GitHub-documented gates present anywhere in the file: a protected
+`environment:` (requires manual reviewer approval before the job's secrets
+become available) or an explicit actor/author-association check (e.g.
+`github.event.pull_request.author_association` compared against a trusted
+list, or a `github.actor` allowlist). Custom secrets aren't scoped by
+`permissions:` at all, so that block alone doesn't make this safe — hence
+checking for the two mechanisms that actually do.
+
+All three checks are deliberately conservative: they only fire on the literal
+shapes documented above, not on every possible indirect path (e.g. an
+intermediate action re-exporting the same data under a new name, or a
+job-level `environment:`/actor check this file-level scan can't attribute to
+the specific job that uses the secret) — matching the rest of mcpscan's
+"high signal over recall" design principle.
 """
 
 from __future__ import annotations
@@ -231,3 +253,83 @@ class PwnRequestCheckout(Rule):
             if _STEP_START_RE.match(lines[k]):
                 return len(lines[k]) - len(lines[k].lstrip(" "))
         return len(lines[idx]) - len(lines[idx].lstrip(" "))
+
+
+# --- MCP017 -----------------------------------------------------------------
+
+_UNTRUSTED_TRIGGER_RE = re.compile(
+    r"(?:^|[\[\s,'\"])"
+    r"(?:pull_request_target|issue_comment|issues|discussion_comment|discussion)"
+    r"(?:$|[\]\s,:'\"])"
+)
+_CUSTOM_SECRET_RE = re.compile(
+    r"\$\{\{\s*secrets\.(?!GITHUB_TOKEN\b)[A-Za-z0-9_]+"
+)
+_ENVIRONMENT_KEY_RE = re.compile(r"^\s*environment\s*:", re.MULTILINE)
+_ACTOR_GATE_RE = re.compile(r"author_association|github\.actor\b")
+
+
+def _on_block_text(lines: List[str]) -> str:
+    """Return the raw text of the `on:` trigger block (key line included)."""
+    out: List[str] = []
+    in_on_block = False
+    on_indent = 0
+    for line in lines:
+        stripped = line.strip()
+        if not in_on_block and _ON_KEY_RE.match(stripped):
+            in_on_block = True
+            on_indent = len(line) - len(line.lstrip(" "))
+            out.append(line)
+            continue
+        if in_on_block:
+            if stripped == "":
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if indent <= on_indent:
+                break
+            out.append(line)
+    return "\n".join(out)
+
+
+@register
+class UntrustedTriggerSecretReachability(Rule):
+    id = "MCP017"
+    name = ("Untrusted-trigger workflow reaches a custom secret with no "
+            "environment or identity gate")
+    severity = Severity.HIGH
+    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
+
+    def check(self, files: List[FileInfo]) -> List[Finding]:
+        out: List[Finding] = []
+        for f in files:
+            if not _is_workflow_file(f):
+                continue
+            lines = f.lines
+            if not _UNTRUSTED_TRIGGER_RE.search(_on_block_text(lines)):
+                continue
+
+            text = "\n".join(lines)
+            if _ENVIRONMENT_KEY_RE.search(text) or _ACTOR_GATE_RE.search(text):
+                continue
+
+            for i, line in enumerate(lines):
+                if not _CUSTOM_SECRET_RE.search(line):
+                    continue
+                out.append(self.finding(
+                    f, i + 1, line,
+                    title="Untrusted-trigger workflow reaches a custom "
+                          "secret with no gate",
+                    detail="This workflow can be triggered by untrusted "
+                           "content (an issue, PR, or comment from anyone, "
+                           "not just a repo collaborator) and this step "
+                           "references a custom secret. Unlike GITHUB_TOKEN, "
+                           "custom secrets aren't scoped by a permissions: "
+                           "block, so an unscoped permissions setup doesn't "
+                           "help here. Gate this job behind a protected "
+                           "environment: (Settings > Environments, require "
+                           "reviewers) or an explicit actor/author_association "
+                           "check before the secret is used, or switch to the "
+                           "pull_request trigger if the job doesn't actually "
+                           "need write-scoped secrets.",
+                ))
+        return out
