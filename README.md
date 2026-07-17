@@ -655,7 +655,7 @@ ships from the tagged commit, not from `main`.
 ## 🗺️ Roadmap
 
 - [ ] Publish to PyPI (`pipx install mcpscan`)
-- [x] ~~`--fix` mode with suggested patches~~ (MCP009 / MCP010, v0.4.0 — see [above](#-fix-mechanical-not-magical))
+- [x] ~~`--fix` mode with suggested patches~~ (MCP009 / MCP010, v0.4.0 — see [above](#--fix-mechanical-not-magical))
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
 - [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.4.0`)
 - [x] ~~Pre-commit hook~~ (`.pre-commit-hooks.yaml`, v0.5.0)
