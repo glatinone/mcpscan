@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-17
+
+### Added
+- **MCP018 — debug/proxy/inspector server bound to all interfaces exposes an
+  unauthenticated connect/exec endpoint.** Motivated by
+  `research/2026-07-17.md`'s top compounding opportunity: this exact
+  vulnerability shape has now been independently confirmed twice in the MCP
+  tooling ecosystem itself, not in some adjacent space — Anthropic's own MCP
+  Inspector (CVE-2025-49596, CVSS 9.4) and MCPJam Inspector (CVE-2026-23744,
+  CVSS 9.8, no user interaction required), roughly eight months apart. Both
+  bound their HTTP proxy to every network interface instead of localhost and
+  accepted a raw command/args payload on a connect-style endpoint with no
+  authentication, achieving remote code execution from a single crafted
+  request.
+
+  New `mcpscan/rules/debug_endpoint.py`, a line-window heuristic (no AST, no
+  YAML/JSON parse) requiring two co-occurring conditions in the same source
+  file: (1) a bind call exposing every network interface — an explicit
+  all-interfaces host (`0.0.0.0`, `::`, or an empty host string), or a Node
+  `.listen(port)` call with no host argument (which defaults to all
+  interfaces); (2) a route/handler whose path looks like a debug/inspector
+  connect-or-exec endpoint, which spawns a process using a command/args value
+  read directly out of the request body, with no authentication check
+  anywhere in the handler. Critical severity, `MCP07:2025` (Insufficient
+  Authentication & Authorization — same category as MCP010/MCP012, since the
+  finding is the absence of a credential check, not the process-spawn
+  mechanism itself). Deliberately conservative, matching the rest of
+  mcpscan's "high signal over recall" design: only fires on the literal shape
+  both disclosed CVEs share, not on every HTTP server that happens to spawn a
+  process anywhere in the file.
+
+  Found and fixed a self-scan regression while building this, the same class
+  already documented for MCP013/MCP015: the new unit tests in
+  `tests/test_debug_endpoint.py` construct a literal Node.js-shaped fixture
+  string to exercise the rule directly, and that literal string looks exactly
+  like a real vulnerable handler to the new rule once the whole repo gets
+  self-scanned. Fixed with a single `# mcpscan: ignore[MCP018]` comment on
+  the one affected line, the same suppression pattern already established
+  for this exact class of problem.
+
+  9 new tests (`tests/test_debug_endpoint.py`): the vulnerable shape firing
+  in both Python/Flask and Node/Express styles, a localhost-only bind staying
+  clean, an authentication check in the handler staying clean, an unrelated
+  route path staying clean, a hardcoded-argv spawn staying clean, bind-all
+  with no connect route staying clean, a connect route with no bind-all
+  anywhere staying clean, and an out-of-scope file extension staying clean.
+  New vulnerable/clean `server.py` fixture additions demonstrate the
+  vulnerable and fixed pattern side by side. 109 tests passing (was 100).
+  Dogfood self-scan clean — verified end-to-end with the real CLI against
+  both fixture directories before committing, not just unit tests.
+
 ## [0.12.0] - 2026-07-16
 
 ### Added
@@ -363,7 +414,8 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/glatinone/mcpscan/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/glatinone/mcpscan/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/glatinone/mcpscan/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/glatinone/mcpscan/compare/v0.9.0...v0.10.0

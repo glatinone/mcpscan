@@ -18,3 +18,16 @@ def disk_free() -> int:
 def delete_all(path: str) -> None:
     # MCP013: declares its destructive capability truthfully — stays quiet.
     shutil.rmtree(path)
+
+
+# MCP018: bound to localhost only, and the connect endpoint requires
+# authentication before it will spawn anything — stays quiet either way.
+app.run(host="127.0.0.1", port=6274)
+
+
+@app.route("/api/connect", methods=["POST"])
+def connect():
+    if not authenticate(request.headers.get("Authorization")):
+        return "unauthorized", 401
+    payload = request.get_json()
+    return subprocess.Popen(payload["command"], payload.get("args", []))

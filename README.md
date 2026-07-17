@@ -86,6 +86,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP015** | 🧬 Workflow script injection | High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | An issue/PR title, body, comment, or branch name interpolated directly as `${{ ... }}` inside a `.github/workflows/*.yml` `run:`/`script:` step instead of going through an `env:` variable first |
 | **MCP016** | 🎣 Pwn request | Critical | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A workflow triggers on `pull_request_target` (base-repo secrets, even for a fork PR) and checks out the fork's own head commit with `actions/checkout` |
 | **MCP017** | 🗝️ Untrusted-trigger secret reachability | High | [MCP02:2025](#-owasp-mcp-top-10-mapping) | A workflow triggered by untrusted content (`pull_request_target`, `issue_comment`, `issues`, `discussion`, `discussion_comment`) references a custom secret (`${{ secrets.X }}`) with no protected `environment:` and no actor/`author_association` gate anywhere in the file |
+| **MCP018** | 🛰️ Unauthenticated connect/exec endpoint | Critical | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A server bound to every network interface (`0.0.0.0`, or `.listen(port)` with no host) exposes a connect/exec-shaped route that spawns a process from a command/args value taken straight out of the request body, with no auth check in the handler |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -105,7 +106,7 @@ output.
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
-| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012 |
+| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
 | MCP09:2025 | Shadow MCP Servers | `--discover` (v0.7.0) |
 | MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
@@ -147,6 +148,17 @@ actor/`author_association` check) present anywhere in the file. `GITHUB_TOKEN`
 usage alone doesn't trigger this — that token is already scoped by the
 `permissions:` block, a separate mechanism; custom secrets aren't scoped by
 `permissions:` at all, which is exactly why the other two gates matter here.
+
+MCP018 maps to MCP07 (Insufficient Authentication & Authorization), the same
+category as MCP010/MCP012: the finding is specifically the *absence of a
+credential check* on a network-reachable endpoint, not the process-spawn
+mechanism itself (MCP001's territory) — the same reasoning that puts MCP012's
+no-auth remote servers here. This is the shape behind two real CVEs in MCP
+debug tooling itself: Anthropic's own MCP Inspector (CVE-2025-49596, CVSS 9.4)
+and MCPJam Inspector (CVE-2026-23744, CVSS 9.8), both of which bound their
+HTTP proxy to every interface and exposed an unauthenticated connect/exec
+endpoint — the same insecure default made independently by two unrelated
+teams roughly eight months apart.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -356,6 +368,32 @@ full YAML parse, keeping mcpscan zero-dependency; they stay quiet on the safe
 pattern they're checking for, not just the unsafe one, so they only fire on
 the specific shapes documented above.
 
+### MCP018: your MCP debug tooling is in scope too
+
+Two real CVEs in MCP debug/proxy servers themselves — Anthropic's own MCP
+Inspector (CVE-2025-49596, CVSS 9.4) and MCPJam Inspector (CVE-2026-23744,
+CVSS 9.8, no user interaction required) — shared the identical root cause:
+the server bound its HTTP proxy to every network interface instead of
+localhost, and exposed a connect-style endpoint that accepted a raw
+command/args payload with no authentication at all. Two unrelated teams
+building tools in mcpscan's own target domain made the same insecure-default
+mistake roughly eight months apart.
+
+```console
+$ mcpscan .
+ CRITICAL  MCP018  Unauthenticated connect/exec endpoint on a server bound to all interfaces [MCP07:2025]
+           server.py:57
+           > return subprocess.Popen(payload["command"], payload.get("args", []))
+```
+
+MCP018 requires both conditions in the same file: a bind call exposing every
+interface (`host="0.0.0.0"`, an empty host string, or a Node `.listen(port)`
+call with no host argument, which defaults to all interfaces), and a
+connect/exec-shaped route that spawns a process using a command/args value
+read directly from the request body, with no authentication check anywhere
+in the handler. Binding to `127.0.0.1`/`localhost`, or adding a token check
+before the payload is used, both suppress the finding.
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -451,7 +489,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.12.0
+      - uses: glatinone/mcpscan@v0.13.0
         with:
           path: .
           min-severity: high
@@ -477,7 +515,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.12.0
+    rev: v0.13.0
     hooks:
       - id: mcpscan
 ```
@@ -532,7 +570,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      16 independent rules, each yielding Findings
+   rule registry      17 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -643,6 +681,10 @@ ships from the tagged commit, not from `main`.
   custom secret with no environment/actor gate~~ (MCP017, v0.12.0, the generic
   "Cordyceps" pattern — see
   [above](#mcp015mcp016mcp017-your-ci-workflows-are-now-in-scope-too))
+- [x] ~~Debug/proxy/inspector servers bound to all interfaces with an
+  unauthenticated connect/exec endpoint~~ (MCP018, v0.13.0, the same shape
+  confirmed by two real CVEs in MCP debug tooling itself — see
+  [above](#mcp018-your-mcp-debug-tooling-is-in-scope-too))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 

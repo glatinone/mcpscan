@@ -16,6 +16,7 @@ from . import webfetch_domain    # noqa: F401,E402
 from . import auth_gaps          # noqa: F401,E402
 from . import tool_annotations   # noqa: F401,E402
 from . import workflow_injection # noqa: F401,E402
+from . import debug_endpoint     # noqa: F401,E402
 
 
 def all_rules():
