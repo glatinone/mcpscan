@@ -1,4 +1,4 @@
-"""MCP015 / MCP016 / MCP017 — untrusted content flowing into GitHub Actions.
+"""MCP015 / MCP016 / MCP017 / MCP019 — untrusted content flowing into GitHub Actions.
 
 The first rule category to look at `.github/workflows/*.yml` rather than an MCP
 server's own source or config. Motivated by `research/2026-07-14.md` Pain Radar
@@ -49,12 +49,29 @@ list, or a `github.actor` allowlist). Custom secrets aren't scoped by
 `permissions:` at all, so that block alone doesn't make this safe — hence
 checking for the two mechanisms that actually do.
 
-All three checks are deliberately conservative: they only fire on the literal
+MCP019 — `workflow_run` artifact reachability: a workflow triggers on
+`workflow_run` (which runs in the base repository's context — with its
+default `GITHUB_TOKEN`, at whatever scope the repo/org leaves that token by
+default — even when the triggering run came from a fork PR) and downloads an
+artifact produced by that triggering run (`actions/download-artifact` or the
+common third-party `dawidd6/action-download-artifact`, referencing
+`github.event.workflow_run.id`), with no `permissions:` block anywhere in the
+file restricting the token away from write access. This closes both
+remaining documented GitHub Actions classes noted in the backlog as one rule
+rather than two: the artifact-reachability shape itself, and "no explicit
+`permissions:` block at all" folded in as the gate condition, since an absent
+`permissions:` block leaves exactly the same broad default-token exposure a
+write-scoped one would. A workflow that sets `permissions:` to read-only (or
+`{}`) anywhere in the file, at any level, suppresses the finding — file-level
+granularity, not job-level, the same known tradeoff MCP017 already documents
+for its own gate check.
+
+All checks are deliberately conservative: they only fire on the literal
 shapes documented above, not on every possible indirect path (e.g. an
 intermediate action re-exporting the same data under a new name, or a
-job-level `environment:`/actor check this file-level scan can't attribute to
-the specific job that uses the secret) — matching the rest of mcpscan's
-"high signal over recall" design principle.
+job-level `environment:`/actor/`permissions:` check this file-level scan
+can't attribute to the specific job that uses the secret or artifact) —
+matching the rest of mcpscan's "high signal over recall" design principle.
 """
 
 from __future__ import annotations
@@ -180,6 +197,14 @@ _PR_HEAD_REF_RE = re.compile(
 _STEP_START_RE = re.compile(r"^(\s*)-\s")
 
 
+def _step_indent(lines: List[str], idx: int) -> int:
+    """Return the indent of the step (`- name:`/`- uses:`/`- run:`) containing line idx."""
+    for k in range(idx, -1, -1):
+        if _STEP_START_RE.match(lines[k]):
+            return len(lines[k]) - len(lines[k].lstrip(" "))
+    return len(lines[idx]) - len(lines[idx].lstrip(" "))
+
+
 def _triggers_on_pull_request_target(lines: List[str]) -> bool:
     in_on_block = False
     on_indent = 0
@@ -223,7 +248,7 @@ class PwnRequestCheckout(Rule):
             for i, line in enumerate(lines):
                 if not _CHECKOUT_RE.search(line):
                     continue
-                step_indent = self._step_indent(lines, i)
+                step_indent = _step_indent(lines, i)
                 for j in range(i + 1, min(i + 12, n)):
                     probe = lines[j]
                     if probe.strip() and _STEP_START_RE.match(probe):
@@ -246,13 +271,6 @@ class PwnRequestCheckout(Rule):
                         ))
                         break
         return out
-
-    @staticmethod
-    def _step_indent(lines: List[str], idx: int) -> int:
-        for k in range(idx, -1, -1):
-            if _STEP_START_RE.match(lines[k]):
-                return len(lines[k]) - len(lines[k].lstrip(" "))
-        return len(lines[idx]) - len(lines[idx].lstrip(" "))
 
 
 # --- MCP017 -----------------------------------------------------------------
@@ -332,4 +350,114 @@ class UntrustedTriggerSecretReachability(Rule):
                            "pull_request trigger if the job doesn't actually "
                            "need write-scoped secrets.",
                 ))
+        return out
+
+
+# --- MCP019 -----------------------------------------------------------------
+
+_WORKFLOW_RUN_TRIGGER_RE = re.compile(
+    r"(?:^|[\[\s,'\"])workflow_run(?:$|[\]\s,:'\"])"
+)
+_DOWNLOAD_ARTIFACT_RE = re.compile(
+    r"uses:\s*(?:actions/download-artifact|dawidd6/action-download-artifact)@"
+)
+_TRIGGERING_RUN_ID_RE = re.compile(
+    r"run[-_]id\s*:\s*\$\{\{\s*github\.event\.workflow_run\.id\s*\}\}"
+)
+_PERMISSIONS_KEY_RE = re.compile(r"^(\s*)permissions\s*:\s*(.*)$")
+
+
+def _has_restrictive_permissions_gate(lines: List[str]) -> bool:
+    """True if the file sets an explicit `permissions:` (anywhere, any level)
+    that grants no write scope. False if `permissions:` is absent entirely,
+    or any occurrence grants a write scope (including `write-all`) — either
+    case leaves the broad/default `GITHUB_TOKEN` scope in play.
+    """
+    found_permissions_key = False
+    i = 0
+    n = len(lines)
+    while i < n:
+        m = _PERMISSIONS_KEY_RE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        found_permissions_key = True
+        key_indent = len(m.group(1))
+        inline_value = m.group(2).strip()
+        if inline_value:
+            if "write" in inline_value.lower():
+                return False
+            i += 1
+            continue
+        j = i + 1
+        block_lines: List[str] = []
+        while j < n:
+            probe = lines[j]
+            if probe.strip() == "":
+                j += 1
+                continue
+            indent = len(probe) - len(probe.lstrip(" "))
+            if indent <= key_indent:
+                break
+            block_lines.append(probe)
+            j += 1
+        if "write" in "\n".join(block_lines).lower():
+            return False
+        i = j
+    return found_permissions_key
+
+
+@register
+class WorkflowRunArtifactReachability(Rule):
+    id = "MCP019"
+    name = ("workflow_run workflow downloads the triggering run's artifact "
+            "with no restrictive permissions gate")
+    severity = Severity.HIGH
+    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
+
+    def check(self, files: List[FileInfo]) -> List[Finding]:
+        out: List[Finding] = []
+        for f in files:
+            if not _is_workflow_file(f):
+                continue
+            lines = f.lines
+            if not _WORKFLOW_RUN_TRIGGER_RE.search(_on_block_text(lines)):
+                continue
+            if _has_restrictive_permissions_gate(lines):
+                continue
+
+            n = len(lines)
+            for i, line in enumerate(lines):
+                if not _DOWNLOAD_ARTIFACT_RE.search(line):
+                    continue
+                step_indent = _step_indent(lines, i)
+                for j in range(i + 1, min(i + 12, n)):
+                    probe = lines[j]
+                    if probe.strip() and _STEP_START_RE.match(probe):
+                        probe_indent = len(probe) - len(probe.lstrip(" "))
+                        if probe_indent <= step_indent:
+                            break
+                    if _TRIGGERING_RUN_ID_RE.search(probe):
+                        out.append(self.finding(
+                            f, j + 1, probe,
+                            title="workflow_run job downloads the triggering "
+                                  "run's artifact with no permissions gate",
+                            detail="This workflow triggers on workflow_run, "
+                                   "which runs in the base repository's "
+                                   "context with the default GITHUB_TOKEN "
+                                   "even when the triggering run came from a "
+                                   "fork PR, and downloads an artifact "
+                                   "produced by that untrusted triggering "
+                                   "run. With no permissions: block "
+                                   "restricting the token to read-only "
+                                   "anywhere in this file, whatever this job "
+                                   "does with the artifact runs at the base "
+                                   "repo's full default privilege. Add a "
+                                   "permissions: block scoped to read-only "
+                                   "(or only the specific write scope "
+                                   "actually needed), and treat the "
+                                   "artifact's contents as untrusted — don't "
+                                   "execute it directly.",
+                        ))
+                        break
         return out

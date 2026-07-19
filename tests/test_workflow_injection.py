@@ -1,5 +1,6 @@
-"""Tests for MCP015 (script injection), MCP016 (pwn request checkout), and
-MCP017 (untrusted-trigger secret reachability)."""
+"""Tests for MCP015 (script injection), MCP016 (pwn request checkout),
+MCP017 (untrusted-trigger secret reachability), and MCP019 (workflow_run
+artifact reachability)."""
 
 import unittest
 
@@ -7,6 +8,7 @@ from mcpscan.loaders import FileInfo
 from mcpscan.rules.workflow_injection import (
     PwnRequestCheckout,
     UntrustedTriggerSecretReachability,
+    WorkflowRunArtifactReachability,
     WorkflowScriptInjection,
 )
 
@@ -303,6 +305,154 @@ class TestUntrustedTriggerSecretReachability(unittest.TestCase):
             "  respond:\n"
             "    steps:\n"
             "      - run: echo hi\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+
+class TestWorkflowRunArtifactReachability(unittest.TestCase):
+    rule = WorkflowRunArtifactReachability()
+
+    def test_download_with_triggering_run_id_and_no_permissions_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    workflows: [Build]\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          name: build-output\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+            "      - run: ./build-output/script.sh\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "MCP019")
+        self.assertEqual(findings[0].owasp, "MCP02:2025")
+
+    def test_third_party_download_action_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: dawidd6/action-download-artifact@v3\n"
+            "        with:\n"
+            "          run_id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_readonly_permissions_block_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "permissions:\n"
+            "  contents: read\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_empty_permissions_block_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "permissions: {}\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_write_all_permissions_still_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "permissions: write-all\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_job_level_write_permission_still_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    permissions:\n"
+            "      contents: write\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_download_without_triggering_run_id_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          name: same-run-artifact\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_non_workflow_run_trigger_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  push:\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_no_artifact_download_step_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - run: echo done\n"
         )
         findings = self.rule.check([_file(text)])
         self.assertEqual(findings, [])

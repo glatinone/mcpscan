@@ -6,6 +6,52 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-19
+
+### Added
+- **MCP019 — `workflow_run` artifact reachability with no restrictive
+  `permissions:` gate.** Closes both remaining documented GitHub Actions
+  vulnerability classes noted in the roadmap since v0.11.0, as one rule
+  instead of two: a workflow triggers on `workflow_run` (which runs in the
+  base repository's context with the default `GITHUB_TOKEN`, even when the
+  triggering run came from a fork PR) and downloads an artifact produced by
+  that untrusted triggering run (`actions/download-artifact` or the common
+  third-party `dawidd6/action-download-artifact`, referencing
+  `github.event.workflow_run.id`), with no `permissions:` block anywhere in
+  the file restricting the token away from write access. An absent
+  `permissions:` block ("no explicit block at all," the second uncovered
+  class) leaves exactly the same broad-token exposure a write-scoped one
+  would, so both count as the same "not gated" condition here rather than
+  shipping a second, much noisier blanket rule for every workflow lacking a
+  `permissions:` key regardless of what it actually does.
+
+  High severity, mapped to `MCP02:2025` (Privilege Escalation via Scope
+  Creep — same category as MCP004/MCP011/MCP017), since the root cause is
+  scope creep on the default token, not a proven code-execution primitive
+  (MCP015/MCP016's territory). File-level gate detection, not job-level — the
+  same known tradeoff MCP017 already documents for its own `environment:`/
+  actor-gate check.
+
+  9 new tests in `tests/test_workflow_injection.py`: the vulnerable shape
+  firing with `actions/download-artifact`, the same shape firing with
+  `dawidd6/action-download-artifact`, a read-only `permissions:` block
+  suppressing it, an empty `permissions: {}` suppressing it, `write-all`
+  still firing, a job-level `contents: write` still firing, a download with
+  no reference to the triggering run's id staying clean, a non-`workflow_run`
+  trigger staying clean, and no artifact-download step at all staying clean.
+  New vulnerable/clean `.github/workflows/workflow_run_artifact.yml` fixture
+  pair. Refactored `PwnRequestCheckout`'s `_step_indent` helper to a
+  module-level function shared with the new rule, rather than duplicating
+  the same step-boundary walk a second time. 118 tests passing (was 109).
+  Dogfood self-scan clean; verified end-to-end against both fixture
+  directories with the real CLI, not just the unit tests.
+
+  README updated (new rules table row, OWASP mapping table + reasoning
+  paragraph, a new MCP019 worked-example section, architecture diagram rule
+  count 18→19, roadmap item checked off, version pins in the Action/
+  pre-commit examples), `CONTRIBUTING.md`'s next-free-id example corrected to
+  MCP020.
+
 ## [0.13.0] - 2026-07-17
 
 ### Added
