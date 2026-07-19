@@ -164,7 +164,7 @@ teams roughly eight months apart.
 
 MCP019 maps to MCP04 (Supply Chain), the same category as MCP016: the
 vulnerability isn't the checkout or download itself, it's that untrusted
-fork *code or build output* — not just data — ends up trusted inside a job
+fork *code or build output*, not just data, ends up trusted inside a job
 still holding the base repo's privileged token, the same "something you
 didn't build got to run with your permissions" shape as a compromised
 dependency. It's deliberately not conditioned on the file's `permissions:`
@@ -177,7 +177,7 @@ MCP020 maps to MCP02 (Scope Creep), the same category as MCP004/MCP011/MCP017:
 the root cause is a workflow left at whatever broad default scope the
 repo/org grants its `GITHUB_TOKEN`, not a code-execution primitive
 (MCP015/MCP016/MCP019's territory) or a missing credential (MCP07's). Unlike
-those rules, this one is a "missing thing" check — the absence of a
+those rules, this one is a "missing thing" check. The absence of a
 `permissions:` block is not itself proof of a problem, since plenty of
 workflows correctly need no elevated scope at all (this project's own
 `ci.yml` included). That's why it only fires when the file also does
@@ -424,9 +424,9 @@ before the payload is used, both suppress the finding.
 Two more documented GitHub Actions vulnerability classes, closing out the
 roadmap item open since v0.11.0.
 
-**MCP019 — `workflow_run` token/artifact reuse.** `workflow_run` always runs
+**MCP019: `workflow_run` token/artifact reuse.** `workflow_run` always runs
 the *base* branch's copy of the workflow file, with the base repository's
-`GITHUB_TOKEN` and secrets — even when the run that triggered it came from a
+`GITHUB_TOKEN` and secrets, even when the run that triggered it came from a
 fork's PR. A common post-build job checks out that triggering run's own
 commit, or downloads the artifact it produced, and does something with it:
 
@@ -442,7 +442,7 @@ MCP019 fires on either documented shape: `actions/checkout` pinned to
 pattern as MCP016, reached via `workflow_run` instead of
 `pull_request_target`), or an artifact download
 (`actions/download-artifact`/`dawidd6/action-download-artifact`) referencing
-`github.event.workflow_run.id` — GitHub Security Lab and GitHub's own
+`github.event.workflow_run.id`. GitHub Security Lab and GitHub's own
 hardening guide both document this as "artifact poisoning." If the
 triggering workflow can run on a fork PR, that checkout or artifact is
 attacker-controlled the moment it lands in a privileged job. The fix is
@@ -450,9 +450,9 @@ checking out the base ref instead, or treating a downloaded artifact as
 inert data (never extracted and executed) unless its provenance has been
 validated first.
 
-**MCP020 — missing `permissions:` block.** A workflow with no explicit
+**MCP020: missing `permissions:` block.** A workflow with no explicit
 `permissions:` key anywhere relies on whatever the repository or
-organization default grants its `GITHUB_TOKEN` — still read/write on every
+organization default grants its `GITHUB_TOKEN`, still read/write on every
 scope for any org created before GitHub's February 2023 default change, or
 one that reverted the setting:
 
@@ -465,19 +465,19 @@ $ mcpscan .
 
 This is a "missing thing" check, and the wrong kind of false positive is
 expensive here: most workflows correctly omit `permissions:` because they
-genuinely need no elevated scope (this project's own `ci.yml` — checkout,
-install, run tests, dogfood-scan itself — is exactly that, and stays clean).
-So MCP020 requires a second, independent signal before it fires: the
-workflow must also contain a recognizable write action or command —
-publishing a release (`softprops/action-gh-release`, `actions/create-release`,
-...), pushing a commit, commenting on or merging a PR/issue via the `gh` CLI,
-or calling `api.github.com` with a write HTTP verb. A workflow with no
-`permissions:` block that never does any of those (read-only CI, linting, a
-plain `gh pr view`) stays quiet, the same way MCP017 stays quiet on a
-`GITHUB_TOKEN`-only workflow. `actions/github-script` calling a write-shaped
-REST/GraphQL method from inside its JS callback is a known, deliberate gap —
-catching that would mean parsing the script body, not just a YAML line
-window.
+genuinely need no elevated scope (this project's own `ci.yml`, which just
+checks out, installs, runs tests, and dogfood-scans itself, is exactly
+that, and stays clean). So MCP020 requires a second, independent signal
+before it fires: the workflow must also contain a recognizable write action
+or command, publishing a release (`softprops/action-gh-release`,
+`actions/create-release`, ...), pushing a commit, commenting on or merging
+a PR/issue via the `gh` CLI, or calling `api.github.com` with a write HTTP
+verb. A workflow with no `permissions:` block that never does any of those
+(read-only CI, linting, a plain `gh pr view`) stays quiet, the same way
+MCP017 stays quiet on a `GITHUB_TOKEN`-only workflow. `actions/github-script`
+calling a write-shaped REST/GraphQL method from inside its JS callback is a
+known, deliberate gap: catching that would mean parsing the script body,
+not just a YAML line window.
 
 ### `--fix`: mechanical, not magical
 
@@ -773,7 +773,7 @@ ships from the tagged commit, not from `main`.
 - [x] ~~`workflow_run` triggers reusing a privileged token against untrusted
   artifacts, and `GITHUB_TOKEN` over-permissioning (no explicit `permissions:`
   block at all)~~ (MCP019, v0.14.0, completed and split into two properly
-  scoped rules in v0.15.0 (MCP020 added, MCP019 corrected) — see
+  scoped rules in v0.15.0 (MCP020 added, MCP019 corrected), see
   [above](#mcp019mcp020-your-cis-token-scope-is-now-in-scope-too))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).

@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format is based on
 ## [0.15.0] - 2026-07-19
 
 ### Added
-- **MCP020 — missing `permissions:` block**, and a scope correction to
+- **MCP020: missing `permissions:` block**, and a scope correction to
   MCP019 (below). v0.14.0 shipped MCP019 as a single rule that folded
   "no explicit `permissions:` block at all" into `workflow_run`'s own
   gate condition, reasoning that an absent block leaves the same exposure a
@@ -20,16 +20,16 @@ All notable changes to this project are documented here. The format is based on
   `workflow_run` files. Splitting it out as its own rule closes that gap
   without touching MCP019's actual territory.
 
-  **MCP020** (medium, `MCP02:2025` — Privilege Escalation via Scope Creep,
+  **MCP020** (medium, `MCP02:2025`, Privilege Escalation via Scope Creep,
   same category as MCP004/MCP011/MCP017): a workflow has no explicit
   `permissions:` key anywhere (top-level or job-level), leaving its token at
-  whatever the repository/organization default grants — still read/write on
+  whatever the repository/organization default grants, still read/write on
   every scope for any org created before GitHub's February 2023 default
   change. This is a "missing thing" check, and the wrong kind of false
   positive is expensive here: most workflows correctly omit `permissions:`
   because they genuinely need no elevated scope (this project's own
   `ci.yml` included). So it requires a second, independent condition before
-  firing — the workflow must also contain a recognizable write action or
+  firing. The workflow must also contain a recognizable write action or
   command: a known write-only third-party action (`softprops/action-gh-release`,
   `actions/create-release`, `peter-evans/create-pull-request`,
   `stefanzweifel/git-auto-commit-action`, and similar), a `git push`, a
@@ -39,11 +39,11 @@ All notable changes to this project are documented here. The format is based on
   workflow with no `permissions:` block that never does any of those (a
   plain test/lint job, a read-only `gh pr view`) stays quiet. Deliberately
   does not detect `actions/github-script` calling a write-shaped REST/
-  GraphQL method from inside its JS callback body — that needs parsing the
-  script, not a YAML line window; noted as a known gap.
+  GraphQL method from inside its JS callback body, since that needs parsing
+  the script, not a YAML line window; noted as a known gap.
 
   **MCP019 correction**: also now fires on `actions/checkout` pinned to
-  `github.event.workflow_run.head_sha`/`.head_branch` — the "pwn request"
+  `github.event.workflow_run.head_sha`/`.head_branch`, the "pwn request"
   pattern reached via `workflow_run` instead of `pull_request_target`
   directly, the other documented half of this vulnerability class that
   v0.14.0's version only partly covered (it detected the artifact-download
@@ -51,16 +51,16 @@ All notable changes to this project are documented here. The format is based on
   `permissions:` block at all, matching MCP016's own reasoning: once
   untrusted code or a build artifact is on disk in a privileged job, a
   scoped-down token doesn't stop it from reading secrets out of the job's
-  own environment — the fix is not reaching the untrusted ref/artifact in
+  own environment. The fix is not reaching the untrusted ref/artifact in
   the first place, not narrowing what the token can do afterward. Re-mapped
   from `MCP02:2025` to `MCP04:2025` (Software Supply Chain Attacks &
-  Dependency Tampering, same category as MCP016) to match this — the root
+  Dependency Tampering, same category as MCP016) to match this: the root
   cause is untrusted code/artifacts executing with elevated trust, not
   scope creep on the token, which is now MCP020's territory alone.
 
   Both rules live in the existing `mcpscan/rules/workflow_injection.py` (the
   CI-workflow category started by MCP015/016/017) and share its
-  line-window-over-raw-YAML style — no YAML parser, consistent with every
+  line-window-over-raw-YAML style, no YAML parser, consistent with every
   other rule. Added a small `_lookahead_in_step()` helper shared by MCP019's
   two branches, following the same step-boundary-walk pattern MCP016
   already established (`_step_indent`, reused rather than duplicated).

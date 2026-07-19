@@ -562,9 +562,9 @@ class TestMissingPermissionsBlock(unittest.TestCase):
         self.assertEqual(findings, [])
 
     def test_readonly_workflow_with_no_permissions_stays_clean(self):
-        # No permissions: block, but nothing here writes anywhere — the
-        # exact shape of a normal test-only CI workflow, which must never
-        # be flagged by a "missing permissions" check.
+        # No permissions: block, but nothing here writes anywhere. This is
+        # the exact shape of a normal test-only CI workflow, which must
+        # never be flagged by a "missing permissions" check.
         text = (
             "on: [push, pull_request]\n"
             "jobs:\n"

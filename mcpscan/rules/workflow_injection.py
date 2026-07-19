@@ -1,4 +1,4 @@
-"""MCP015 / MCP016 / MCP017 / MCP019 / MCP020 — untrusted content and excess
+"""MCP015 / MCP016 / MCP017 / MCP019 / MCP020: untrusted content and excess
 token scope in GitHub Actions.
 
 The first rule category to look at `.github/workflows/*.yml` rather than an MCP
@@ -50,54 +50,54 @@ list, or a `github.actor` allowlist). Custom secrets aren't scoped by
 `permissions:` at all, so that block alone doesn't make this safe — hence
 checking for the two mechanisms that actually do.
 
-MCP019 — `workflow_run` token/artifact reuse: a workflow triggers on
+MCP019: `workflow_run` token/artifact reuse. A workflow triggers on
 `workflow_run` (which always runs the *base* branch's copy of the workflow
 file, with the base repository's default `GITHUB_TOKEN` and secrets, even
-when the triggering run came from a fork PR — GitHub's own docs on
-`workflow_run` describe this trust boundary explicitly) and then either (a)
+when the triggering run came from a fork PR; GitHub's own docs on
+`workflow_run` describe this trust boundary explicitly), and then either (a)
 checks out the triggering run's own commit/branch
 (`github.event.workflow_run.head_sha`/`.head_branch`) via `actions/checkout`,
 or (b) downloads an artifact that run produced
 (`actions/download-artifact`/`dawidd6/action-download-artifact` referencing
-`github.event.workflow_run.id`) — the documented "artifact poisoning"
+`github.event.workflow_run.id`), the documented "artifact poisoning"
 pattern GitHub Security Lab and GitHub's own hardening guide both describe.
 Either way, content an attacker fully controlled (by opening the fork PR
 that produced the triggering run) is now checked out or downloaded inside a
-job that still holds the base repo's privileged token — the same "pwn
+job that still holds the base repo's privileged token, the same "pwn
 request" shape as MCP016, just reached via `workflow_run` instead of
 `pull_request_target` directly. Deliberately not conditioned on the file's
 `permissions:` block (mirrors MCP016, which doesn't check it either): once
 untrusted code or a script is on disk in a privileged job, a scoped-down
 token doesn't stop it from reading secrets out of the job's own environment
-or tampering with the build — the fix is not reaching the untrusted
+or tampering with the build. The fix is not reaching the untrusted
 ref/artifact in the first place, not narrowing what the token can do
 afterward.
 
-MCP020 — `GITHUB_TOKEN` over-permissioning: a workflow has no explicit
+MCP020: `GITHUB_TOKEN` over-permissioning. A workflow has no explicit
 `permissions:` key anywhere in the file (top-level or job-level), so its
-token is left at whatever the repository/organization default grants —
+token is left at whatever the repository/organization default grants,
 still read-write on every scope for any org created before GitHub flipped
 the new-org default to read-only in February 2023, and for older orgs that
 never revisited the setting. This is a "missing thing" check, not a "found
 something bad" one, and the wrong kind of false positive is expensive here:
 plenty of workflows correctly omit `permissions:` because they truly need no
-elevated scope (this project's own `ci.yml` is exactly that — checkout, install,
+elevated scope (this project's own `ci.yml` is exactly that: checkout, install,
 run tests, dogfood-scan itself, nothing that writes anywhere). So the rule
 requires a second, independent condition before it fires: the workflow must
-also contain a recognizable *write* action or command — publishing a
+also contain a recognizable *write* action or command, publishing a
 release, pushing a commit, commenting on or merging a PR/issue, or calling
 the GitHub REST API with a write HTTP verb. A workflow with no
 `permissions:` block that never does any of those stays quiet, the same way
 MCP017 stays quiet on a `GITHUB_TOKEN`-only workflow. `actions/github-script`
-calling a write-shaped REST/GraphQL method is a known, deliberate gap here —
+calling a write-shaped REST/GraphQL method is a known, deliberate gap here,
 detecting that would mean parsing the JS callback body, not just a YAML line
-window — worth widening if real-world scans surface it as the dominant shape.
+window; worth widening if real-world scans surface it as the dominant shape.
 
 All checks are deliberately conservative: they only fire on the literal
 shapes documented above, not on every possible indirect path (e.g. an
 intermediate action re-exporting the same data under a new name, or a
 job-level `environment:`/actor/`permissions:` check this file-level scan
-can't attribute to the specific job that uses the secret or artifact) —
+can't attribute to the specific job that uses the secret or artifact),
 matching the rest of mcpscan's "high signal over recall" design principle.
 """
 
@@ -466,7 +466,7 @@ class WorkflowRunArtifactReuse(Rule):
                         detail="This workflow triggers on workflow_run and "
                                "downloads an artifact produced by the run "
                                "that triggered it, while still holding the "
-                               "base repository's token/secrets — the "
+                               "base repository's token/secrets, the "
                                "documented 'artifact poisoning' pattern. If "
                                "the triggering workflow can run on a fork PR, "
                                "the artifact's contents are "
@@ -485,8 +485,8 @@ _PERMISSIONS_KEY_RE = re.compile(r"^\s*permissions\s*:", re.MULTILINE)
 # A deliberately narrow set of shapes that unambiguously *write* to GitHub
 # using the workflow's token. Chosen so a genuinely read-only workflow (this
 # project's own ci.yml: checkout, install, run tests, dogfood-scan itself)
-# never matches any of them — the second, independent condition that keeps
-# this "missing permissions:" check from firing on every workflow that
+# never matches any of them. That is the second, independent condition that
+# keeps this "missing permissions:" check from firing on every workflow that
 # simply doesn't need one.
 _WRITE_ACTIONS = (
     r"softprops/action-gh-release@",
@@ -561,7 +561,7 @@ class MissingPermissionsBlock(Rule):
                 detail="This workflow has no top-level or job-level "
                        "permissions: key anywhere, so its GITHUB_TOKEN gets "
                        "whatever the repository or organization default "
-                       "grants — for any org created before GitHub's "
+                       "grants. For any org created before GitHub's "
                        "February 2023 default change (or one that reverted "
                        "the setting), that default is read/write on every "
                        "scope. This workflow writes to GitHub (a release, "
