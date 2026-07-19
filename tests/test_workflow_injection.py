@@ -1,14 +1,15 @@
 """Tests for MCP015 (script injection), MCP016 (pwn request checkout),
-MCP017 (untrusted-trigger secret reachability), and MCP019 (workflow_run
-artifact reachability)."""
+MCP017 (untrusted-trigger secret reachability), MCP019 (workflow_run
+token/artifact reuse), and MCP020 (missing permissions: block)."""
 
 import unittest
 
 from mcpscan.loaders import FileInfo
 from mcpscan.rules.workflow_injection import (
+    MissingPermissionsBlock,
     PwnRequestCheckout,
     UntrustedTriggerSecretReachability,
-    WorkflowRunArtifactReachability,
+    WorkflowRunArtifactReuse,
     WorkflowScriptInjection,
 )
 
@@ -310,10 +311,10 @@ class TestUntrustedTriggerSecretReachability(unittest.TestCase):
         self.assertEqual(findings, [])
 
 
-class TestWorkflowRunArtifactReachability(unittest.TestCase):
-    rule = WorkflowRunArtifactReachability()
+class TestWorkflowRunArtifactReuse(unittest.TestCase):
+    rule = WorkflowRunArtifactReuse()
 
-    def test_download_with_triggering_run_id_and_no_permissions_fires(self):
+    def test_checkout_of_triggering_run_head_sha_fires(self):
         text = (
             "on:\n"
             "  workflow_run:\n"
@@ -322,6 +323,41 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
             "jobs:\n"
             "  post:\n"
             "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "        with:\n"
+            "          ref: ${{ github.event.workflow_run.head_sha }}\n"
+            "      - run: npm test\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "MCP019")
+        self.assertEqual(findings[0].owasp, "MCP04:2025")
+        self.assertEqual(findings[0].severity.label, "critical")
+
+    def test_checkout_of_triggering_run_head_branch_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "        with:\n"
+            "          ref: ${{ github.event.workflow_run.head_branch }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_download_with_triggering_run_id_fires(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    workflows: [Build]\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
             "    steps:\n"
             "      - uses: actions/download-artifact@v4\n"
             "        with:\n"
@@ -332,7 +368,6 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
         findings = self.rule.check([_file(text)])
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].rule_id, "MCP019")
-        self.assertEqual(findings[0].owasp, "MCP02:2025")
 
     def test_third_party_download_action_fires(self):
         text = (
@@ -349,71 +384,23 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
         findings = self.rule.check([_file(text)])
         self.assertEqual(len(findings), 1)
 
-    def test_readonly_permissions_block_suppresses_finding(self):
-        text = (
-            "on:\n"
-            "  workflow_run:\n"
-            "    types: [completed]\n"
-            "permissions:\n"
-            "  contents: read\n"
-            "jobs:\n"
-            "  post:\n"
-            "    steps:\n"
-            "      - uses: actions/download-artifact@v4\n"
-            "        with:\n"
-            "          run-id: ${{ github.event.workflow_run.id }}\n"
-        )
-        findings = self.rule.check([_file(text)])
-        self.assertEqual(findings, [])
-
-    def test_empty_permissions_block_suppresses_finding(self):
-        text = (
-            "on:\n"
-            "  workflow_run:\n"
-            "    types: [completed]\n"
-            "permissions: {}\n"
-            "jobs:\n"
-            "  post:\n"
-            "    steps:\n"
-            "      - uses: actions/download-artifact@v4\n"
-            "        with:\n"
-            "          run-id: ${{ github.event.workflow_run.id }}\n"
-        )
-        findings = self.rule.check([_file(text)])
-        self.assertEqual(findings, [])
-
-    def test_write_all_permissions_still_fires(self):
-        text = (
-            "on:\n"
-            "  workflow_run:\n"
-            "    types: [completed]\n"
-            "permissions: write-all\n"
-            "jobs:\n"
-            "  post:\n"
-            "    steps:\n"
-            "      - uses: actions/download-artifact@v4\n"
-            "        with:\n"
-            "          run-id: ${{ github.event.workflow_run.id }}\n"
-        )
-        findings = self.rule.check([_file(text)])
-        self.assertEqual(len(findings), 1)
-
-    def test_job_level_write_permission_still_fires(self):
+    def test_both_shapes_in_one_file_both_fire(self):
         text = (
             "on:\n"
             "  workflow_run:\n"
             "    types: [completed]\n"
             "jobs:\n"
             "  post:\n"
-            "    permissions:\n"
-            "      contents: write\n"
             "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "        with:\n"
+            "          ref: ${{ github.event.workflow_run.head_sha }}\n"
             "      - uses: actions/download-artifact@v4\n"
             "        with:\n"
             "          run-id: ${{ github.event.workflow_run.id }}\n"
         )
         findings = self.rule.check([_file(text)])
-        self.assertEqual(len(findings), 1)
+        self.assertEqual(len(findings), 2)
 
     def test_download_without_triggering_run_id_does_not_fire(self):
         text = (
@@ -426,6 +413,20 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
             "      - uses: actions/download-artifact@v4\n"
             "        with:\n"
             "          name: same-run-artifact\n"
+            "          run-id: ${{ github.run_id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_checkout_of_base_ref_does_not_fire(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
         )
         findings = self.rule.check([_file(text)])
         self.assertEqual(findings, [])
@@ -444,7 +445,7 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
         findings = self.rule.check([_file(text)])
         self.assertEqual(findings, [])
 
-    def test_no_artifact_download_step_does_not_fire(self):
+    def test_no_checkout_or_download_step_does_not_fire(self):
         text = (
             "on:\n"
             "  workflow_run:\n"
@@ -452,7 +453,137 @@ class TestWorkflowRunArtifactReachability(unittest.TestCase):
             "jobs:\n"
             "  post:\n"
             "    steps:\n"
-            "      - run: echo done\n"
+            "      - run: echo \"build ${{ github.event.workflow_run.conclusion }}\"\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_next_step_boundary_stops_the_lookahead(self):
+        text = (
+            "on:\n"
+            "  workflow_run:\n"
+            "    types: [completed]\n"
+            "jobs:\n"
+            "  post:\n"
+            "    steps:\n"
+            "      - uses: actions/download-artifact@v4\n"
+            "      - name: unrelated\n"
+            "        run: echo hi\n"
+            "      - uses: some/other-action@v1\n"
+            "        with:\n"
+            "          run-id: ${{ github.event.workflow_run.id }}\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+
+class TestMissingPermissionsBlock(unittest.TestCase):
+    rule = MissingPermissionsBlock()
+
+    def test_release_action_with_no_permissions_fires(self):
+        text = (
+            "on:\n"
+            "  push:\n"
+            "    tags: ['v*']\n"
+            "jobs:\n"
+            "  release:\n"
+            "    steps:\n"
+            "      - uses: softprops/action-gh-release@v2\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].rule_id, "MCP020")
+        self.assertEqual(findings[0].owasp, "MCP02:2025")
+
+    def test_git_push_with_no_permissions_fires(self):
+        text = (
+            "on: [push]\n"
+            "jobs:\n"
+            "  bump:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          git commit -am 'bump version'\n"
+            "          git push\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_gh_release_create_with_no_permissions_fires(self):
+        text = (
+            "on: [push]\n"
+            "jobs:\n"
+            "  release:\n"
+            "    steps:\n"
+            "      - run: gh release create v1.0.0 --notes 'release'\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_curl_post_to_github_api_with_no_permissions_fires(self):
+        text = (
+            "on: [issue_comment]\n"
+            "jobs:\n"
+            "  respond:\n"
+            "    steps:\n"
+            "      - run: curl -X POST -H \"Authorization: token "
+            "${{ secrets.GITHUB_TOKEN }}\" https://api.github.com/repos/x/y/issues/1/comments\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(len(findings), 1)
+
+    def test_explicit_top_level_permissions_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  push:\n"
+            "    tags: ['v*']\n"
+            "permissions:\n"
+            "  contents: write\n"
+            "jobs:\n"
+            "  release:\n"
+            "    steps:\n"
+            "      - uses: softprops/action-gh-release@v2\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_explicit_job_level_permissions_suppresses_finding(self):
+        text = (
+            "on:\n"
+            "  push:\n"
+            "    tags: ['v*']\n"
+            "jobs:\n"
+            "  release:\n"
+            "    permissions:\n"
+            "      contents: write\n"
+            "    steps:\n"
+            "      - uses: softprops/action-gh-release@v2\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_readonly_workflow_with_no_permissions_stays_clean(self):
+        # No permissions: block, but nothing here writes anywhere — the
+        # exact shape of a normal test-only CI workflow, which must never
+        # be flagged by a "missing permissions" check.
+        text = (
+            "on: [push, pull_request]\n"
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@v4\n"
+            "      - run: pip install -e .\n"
+            "      - run: python -m unittest discover -s tests\n"
+        )
+        findings = self.rule.check([_file(text)])
+        self.assertEqual(findings, [])
+
+    def test_readonly_gh_command_stays_clean(self):
+        text = (
+            "on: [pull_request]\n"
+            "jobs:\n"
+            "  check:\n"
+            "    steps:\n"
+            "      - run: gh pr view ${{ github.event.pull_request.number }}\n"
         )
         findings = self.rule.check([_file(text)])
         self.assertEqual(findings, [])

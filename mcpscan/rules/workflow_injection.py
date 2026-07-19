@@ -1,4 +1,5 @@
-"""MCP015 / MCP016 / MCP017 / MCP019 — untrusted content flowing into GitHub Actions.
+"""MCP015 / MCP016 / MCP017 / MCP019 / MCP020 — untrusted content and excess
+token scope in GitHub Actions.
 
 The first rule category to look at `.github/workflows/*.yml` rather than an MCP
 server's own source or config. Motivated by `research/2026-07-14.md` Pain Radar
@@ -49,22 +50,48 @@ list, or a `github.actor` allowlist). Custom secrets aren't scoped by
 `permissions:` at all, so that block alone doesn't make this safe — hence
 checking for the two mechanisms that actually do.
 
-MCP019 — `workflow_run` artifact reachability: a workflow triggers on
-`workflow_run` (which runs in the base repository's context — with its
-default `GITHUB_TOKEN`, at whatever scope the repo/org leaves that token by
-default — even when the triggering run came from a fork PR) and downloads an
-artifact produced by that triggering run (`actions/download-artifact` or the
-common third-party `dawidd6/action-download-artifact`, referencing
-`github.event.workflow_run.id`), with no `permissions:` block anywhere in the
-file restricting the token away from write access. This closes both
-remaining documented GitHub Actions classes noted in the backlog as one rule
-rather than two: the artifact-reachability shape itself, and "no explicit
-`permissions:` block at all" folded in as the gate condition, since an absent
-`permissions:` block leaves exactly the same broad default-token exposure a
-write-scoped one would. A workflow that sets `permissions:` to read-only (or
-`{}`) anywhere in the file, at any level, suppresses the finding — file-level
-granularity, not job-level, the same known tradeoff MCP017 already documents
-for its own gate check.
+MCP019 — `workflow_run` token/artifact reuse: a workflow triggers on
+`workflow_run` (which always runs the *base* branch's copy of the workflow
+file, with the base repository's default `GITHUB_TOKEN` and secrets, even
+when the triggering run came from a fork PR — GitHub's own docs on
+`workflow_run` describe this trust boundary explicitly) and then either (a)
+checks out the triggering run's own commit/branch
+(`github.event.workflow_run.head_sha`/`.head_branch`) via `actions/checkout`,
+or (b) downloads an artifact that run produced
+(`actions/download-artifact`/`dawidd6/action-download-artifact` referencing
+`github.event.workflow_run.id`) — the documented "artifact poisoning"
+pattern GitHub Security Lab and GitHub's own hardening guide both describe.
+Either way, content an attacker fully controlled (by opening the fork PR
+that produced the triggering run) is now checked out or downloaded inside a
+job that still holds the base repo's privileged token — the same "pwn
+request" shape as MCP016, just reached via `workflow_run` instead of
+`pull_request_target` directly. Deliberately not conditioned on the file's
+`permissions:` block (mirrors MCP016, which doesn't check it either): once
+untrusted code or a script is on disk in a privileged job, a scoped-down
+token doesn't stop it from reading secrets out of the job's own environment
+or tampering with the build — the fix is not reaching the untrusted
+ref/artifact in the first place, not narrowing what the token can do
+afterward.
+
+MCP020 — `GITHUB_TOKEN` over-permissioning: a workflow has no explicit
+`permissions:` key anywhere in the file (top-level or job-level), so its
+token is left at whatever the repository/organization default grants —
+still read-write on every scope for any org created before GitHub flipped
+the new-org default to read-only in February 2023, and for older orgs that
+never revisited the setting. This is a "missing thing" check, not a "found
+something bad" one, and the wrong kind of false positive is expensive here:
+plenty of workflows correctly omit `permissions:` because they truly need no
+elevated scope (this project's own `ci.yml` is exactly that — checkout, install,
+run tests, dogfood-scan itself, nothing that writes anywhere). So the rule
+requires a second, independent condition before it fires: the workflow must
+also contain a recognizable *write* action or command — publishing a
+release, pushing a commit, commenting on or merging a PR/issue, or calling
+the GitHub REST API with a write HTTP verb. A workflow with no
+`permissions:` block that never does any of those stays quiet, the same way
+MCP017 stays quiet on a `GITHUB_TOKEN`-only workflow. `actions/github-script`
+calling a write-shaped REST/GraphQL method is a known, deliberate gap here —
+detecting that would mean parsing the JS callback body, not just a YAML line
+window — worth widening if real-world scans surface it as the dominant shape.
 
 All checks are deliberately conservative: they only fire on the literal
 shapes documented above, not on every possible indirect path (e.g. an
@@ -364,56 +391,37 @@ _DOWNLOAD_ARTIFACT_RE = re.compile(
 _TRIGGERING_RUN_ID_RE = re.compile(
     r"run[-_]id\s*:\s*\$\{\{\s*github\.event\.workflow_run\.id\s*\}\}"
 )
-_PERMISSIONS_KEY_RE = re.compile(r"^(\s*)permissions\s*:\s*(.*)$")
+_WORKFLOW_RUN_HEAD_REF_RE = re.compile(
+    r"ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_(?:sha|branch)\s*\}\}"
+)
 
 
-def _has_restrictive_permissions_gate(lines: List[str]) -> bool:
-    """True if the file sets an explicit `permissions:` (anywhere, any level)
-    that grants no write scope. False if `permissions:` is absent entirely,
-    or any occurrence grants a write scope (including `write-all`) — either
-    case leaves the broad/default `GITHUB_TOKEN` scope in play.
+def _lookahead_in_step(lines: List[str], step_idx: int, pattern: "re.Pattern[str]",
+                        max_ahead: int = 12) -> "Tuple[int, str] | None":
+    """Search up to *max_ahead* lines after the step starting at *step_idx*
+    for *pattern*, stopping at the next sibling step boundary so an unrelated
+    later step can't false-positive. Returns (0-based line idx, text) or None.
     """
-    found_permissions_key = False
-    i = 0
+    step_indent = _step_indent(lines, step_idx)
     n = len(lines)
-    while i < n:
-        m = _PERMISSIONS_KEY_RE.match(lines[i])
-        if not m:
-            i += 1
-            continue
-        found_permissions_key = True
-        key_indent = len(m.group(1))
-        inline_value = m.group(2).strip()
-        if inline_value:
-            if "write" in inline_value.lower():
-                return False
-            i += 1
-            continue
-        j = i + 1
-        block_lines: List[str] = []
-        while j < n:
-            probe = lines[j]
-            if probe.strip() == "":
-                j += 1
-                continue
-            indent = len(probe) - len(probe.lstrip(" "))
-            if indent <= key_indent:
+    for j in range(step_idx + 1, min(step_idx + 1 + max_ahead, n)):
+        probe = lines[j]
+        if probe.strip() and _STEP_START_RE.match(probe):
+            probe_indent = len(probe) - len(probe.lstrip(" "))
+            if probe_indent <= step_indent:
                 break
-            block_lines.append(probe)
-            j += 1
-        if "write" in "\n".join(block_lines).lower():
-            return False
-        i = j
-    return found_permissions_key
+        if pattern.search(probe):
+            return j, probe
+    return None
 
 
 @register
-class WorkflowRunArtifactReachability(Rule):
+class WorkflowRunArtifactReuse(Rule):
     id = "MCP019"
-    name = ("workflow_run workflow downloads the triggering run's artifact "
-            "with no restrictive permissions gate")
-    severity = Severity.HIGH
-    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
+    name = ("workflow_run workflow checks out or downloads content from the "
+            "triggering (untrusted) run")
+    severity = Severity.CRITICAL
+    owasp = "MCP04:2025"  # Software Supply Chain Attacks & Dependency Tampering
 
     def check(self, files: List[FileInfo]) -> List[Finding]:
         out: List[Finding] = []
@@ -423,41 +431,144 @@ class WorkflowRunArtifactReachability(Rule):
             lines = f.lines
             if not _WORKFLOW_RUN_TRIGGER_RE.search(_on_block_text(lines)):
                 continue
-            if _has_restrictive_permissions_gate(lines):
-                continue
 
-            n = len(lines)
             for i, line in enumerate(lines):
-                if not _DOWNLOAD_ARTIFACT_RE.search(line):
-                    continue
-                step_indent = _step_indent(lines, i)
-                for j in range(i + 1, min(i + 12, n)):
-                    probe = lines[j]
-                    if probe.strip() and _STEP_START_RE.match(probe):
-                        probe_indent = len(probe) - len(probe.lstrip(" "))
-                        if probe_indent <= step_indent:
-                            break
-                    if _TRIGGERING_RUN_ID_RE.search(probe):
-                        out.append(self.finding(
-                            f, j + 1, probe,
-                            title="workflow_run job downloads the triggering "
-                                  "run's artifact with no permissions gate",
-                            detail="This workflow triggers on workflow_run, "
-                                   "which runs in the base repository's "
-                                   "context with the default GITHUB_TOKEN "
-                                   "even when the triggering run came from a "
-                                   "fork PR, and downloads an artifact "
-                                   "produced by that untrusted triggering "
-                                   "run. With no permissions: block "
-                                   "restricting the token to read-only "
-                                   "anywhere in this file, whatever this job "
-                                   "does with the artifact runs at the base "
-                                   "repo's full default privilege. Add a "
-                                   "permissions: block scoped to read-only "
-                                   "(or only the specific write scope "
-                                   "actually needed), and treat the "
-                                   "artifact's contents as untrusted — don't "
-                                   "execute it directly.",
-                        ))
-                        break
+                if _CHECKOUT_RE.search(line):
+                    hit = _lookahead_in_step(lines, i, _WORKFLOW_RUN_HEAD_REF_RE)
+                    if hit is None:
+                        continue
+                    j, probe = hit
+                    out.append(self.finding(
+                        f, j + 1, probe,
+                        title="workflow_run workflow checks out the "
+                              "triggering run's own untrusted commit",
+                        detail="This workflow triggers on workflow_run, which "
+                               "runs the base branch's copy of this file with "
+                               "the base repository's secrets and token even "
+                               "when the triggering run came from a fork PR, "
+                               "and checks out that run's own head commit/"
+                               "branch. Building or testing that checkout now "
+                               "executes attacker-controlled code with the "
+                               "privileged token. Check out the base ref "
+                               "instead, or, if the fork's code genuinely "
+                               "needs to run, gate the job behind a required "
+                               "reviewer/environment first.",
+                    ))
+                elif _DOWNLOAD_ARTIFACT_RE.search(line):
+                    hit = _lookahead_in_step(lines, i, _TRIGGERING_RUN_ID_RE)
+                    if hit is None:
+                        continue
+                    j, probe = hit
+                    out.append(self.finding(
+                        f, j + 1, probe,
+                        title="workflow_run workflow downloads an artifact "
+                              "from the triggering (untrusted) run",
+                        detail="This workflow triggers on workflow_run and "
+                               "downloads an artifact produced by the run "
+                               "that triggered it, while still holding the "
+                               "base repository's token/secrets — the "
+                               "documented 'artifact poisoning' pattern. If "
+                               "the triggering workflow can run on a fork PR, "
+                               "the artifact's contents are "
+                               "attacker-controlled. Never extract-and-execute "
+                               "it directly; validate its contents first, or "
+                               "use it only as inert data (e.g. a test report "
+                               "to display, not a script to run).",
+                    ))
+        return out
+
+
+# --- MCP020 -----------------------------------------------------------------
+
+_PERMISSIONS_KEY_RE = re.compile(r"^\s*permissions\s*:", re.MULTILINE)
+
+# A deliberately narrow set of shapes that unambiguously *write* to GitHub
+# using the workflow's token. Chosen so a genuinely read-only workflow (this
+# project's own ci.yml: checkout, install, run tests, dogfood-scan itself)
+# never matches any of them — the second, independent condition that keeps
+# this "missing permissions:" check from firing on every workflow that
+# simply doesn't need one.
+_WRITE_ACTIONS = (
+    r"softprops/action-gh-release@",
+    r"actions/create-release@",
+    r"peter-evans/create-pull-request@",
+    r"peter-evans/create-or-update-comment@",
+    r"marocchino/sticky-pull-request-comment@",
+    r"stefanzweifel/git-auto-commit-action@",
+    r"endbug/add-and-commit@",
+    r"ad-m/github-push-action@",
+)
+_WRITE_ACTION_RE = re.compile(
+    r"uses:\s*(?:" + "|".join(_WRITE_ACTIONS) + r")", re.IGNORECASE
+)
+_GIT_PUSH_RE = re.compile(r"(?:^|[\s|;&])git\s+push\b")
+_GH_WRITE_CLI_RE = re.compile(
+    r"\bgh\s+(?:"
+    r"release\s+create"
+    r"|pr\s+(?:comment|merge|review|edit|close)"
+    r"|issue\s+(?:comment|close|edit)"
+    r"|workflow\s+run"
+    r"|api\s+\S+.*-X\s*(?:POST|PUT|PATCH|DELETE)"
+    r")",
+    re.IGNORECASE,
+)
+_CURL_RE = re.compile(r"\bcurl\b")
+_HTTP_WRITE_METHOD_RE = re.compile(r"-X\s*(?:POST|PUT|PATCH|DELETE)", re.IGNORECASE)
+_GITHUB_API_HOST_RE = re.compile(r"api\.github\.com")
+
+
+def _write_signal(lines: List[str]) -> "Tuple[int, str] | None":
+    """Return the (1-based line, text) of the first recognizable write
+    action or command, or None. See the module docstring for why this list
+    is narrow on purpose."""
+    for i, line in enumerate(lines, start=1):
+        if _WRITE_ACTION_RE.search(line):
+            return i, line
+        if _GIT_PUSH_RE.search(line):
+            return i, line
+        if _GH_WRITE_CLI_RE.search(line):
+            return i, line
+        if (_CURL_RE.search(line) and _HTTP_WRITE_METHOD_RE.search(line)
+                and _GITHUB_API_HOST_RE.search(line)):
+            return i, line
+    return None
+
+
+@register
+class MissingPermissionsBlock(Rule):
+    id = "MCP020"
+    name = "Workflow writes to GitHub with no explicit permissions: block"
+    severity = Severity.MEDIUM
+    owasp = "MCP02:2025"  # Privilege Escalation via Scope Creep
+
+    def check(self, files: List[FileInfo]) -> List[Finding]:
+        out: List[Finding] = []
+        for f in files:
+            if not _is_workflow_file(f):
+                continue
+            lines = f.lines
+            if _PERMISSIONS_KEY_RE.search("\n".join(lines)):
+                continue  # an explicit choice was made, whatever it grants
+
+            hit = _write_signal(lines)
+            if hit is None:
+                continue
+            i, line = hit
+            out.append(self.finding(
+                f, i, line,
+                title="Workflow writes to GitHub with no explicit "
+                      "permissions: block",
+                detail="This workflow has no top-level or job-level "
+                       "permissions: key anywhere, so its GITHUB_TOKEN gets "
+                       "whatever the repository or organization default "
+                       "grants — for any org created before GitHub's "
+                       "February 2023 default change (or one that reverted "
+                       "the setting), that default is read/write on every "
+                       "scope. This workflow writes to GitHub (a release, "
+                       "PR/issue comment, push, or API call), so add an "
+                       "explicit permissions: block scoped to only what "
+                       "this job actually needs (e.g. contents: write, or "
+                       "pull-requests: write) instead of relying on "
+                       "whatever the org default happens to be today.",
+            ))
         return out

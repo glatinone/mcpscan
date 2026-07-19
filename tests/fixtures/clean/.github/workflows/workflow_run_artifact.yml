@@ -3,15 +3,9 @@ on:
   workflow_run:
     workflows: [Build]
     types: [completed]
-permissions:
-  contents: read
 jobs:
-  post:
+  notify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: build-output
-          run-id: ${{ github.event.workflow_run.id }}
-      - name: Read one known-safe field, don't execute anything from the artifact
-        run: cat build-output/result.json
+      - name: Report build status
+        run: echo "Build finished with conclusion ${{ github.event.workflow_run.conclusion }}"
