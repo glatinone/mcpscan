@@ -29,7 +29,9 @@ INJECTION = re.compile(
     r"|you (?:must|should) (?:always|secretly|first)"
     r"|<important>|<system>|\[system\]"
     r"|read (?:the )?(?:file )?[~/\\]?\.?(?:ssh|env|aws|bashrc|netrc)"
-    r"|exfiltrat|base64\s*(?:encode|decode)?[^.]{0,30}(?:send|post|upload)",
+    r"|(?:silently|quietly|secretly|covertly)\s+exfiltrat"
+    r"|exfiltrat\w*\s+(?:it|this|that|them|the\s+\w+(?:\s+\w+){0,3})\s+to\b"
+    r"|base64\s*(?:encode|decode)?[^.]{0,30}(?:send|post|upload)",
     re.IGNORECASE,
 )
 

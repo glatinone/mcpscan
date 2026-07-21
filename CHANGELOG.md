@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-07-21
+
+### Fixed
+
+- **MCP002's `exfiltrat` alternative was a bare substring match with no
+  directive context**, unlike every other phrase in the injection regex
+  (all of which require an actual command shape: "ignore previous
+  instructions", "do not tell the user", "before X read Y"). This meant
+  any comment or docstring merely *discussing* exfiltration — a normal
+  security term, not an injected instruction — false-positived at MEDIUM
+  severity. Found while dogfooding mcpscan against secops-toolkit-mcp,
+  whose `assess_shell_command` module comment ("well-documented
+  destructive/exfiltration shapes") tripped it. Narrowed to two directive
+  shapes that still catch real injected instructions: an imperative adverb
+  before the verb (`silently/quietly/secretly/covertly exfiltrate`), or the
+  verb followed by an object and a destination (`exfiltrate the contents
+  to <host>`). 3 new regression tests confirm the false positive is gone
+  and both real-attack shapes still fire. 130 tests passing (was 127).
+
 ## [0.15.0] - 2026-07-19
 
 ### Added
@@ -550,7 +569,8 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/glatinone/mcpscan/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/glatinone/mcpscan/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/glatinone/mcpscan/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/glatinone/mcpscan/compare/v0.12.0...v0.13.0
