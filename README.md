@@ -584,7 +584,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.15.1
+      - uses: glatinone/mcpscan@v0.16.0
         with:
           path: .
           min-severity: high
@@ -610,7 +610,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.15.1
+    rev: v0.16.0
     hooks:
       - id: mcpscan
 ```

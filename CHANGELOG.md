@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- README's GitHub Action and pre-commit hook examples still pinned
+  `v0.15.1`, one release behind the actual latest tag. Bumped both to
+  `v0.16.0` so a copy-pasted example doesn't pin new adopters to a stale
+  release.
+
 ## [0.16.0] - 2026-07-27
 
 ### Added
