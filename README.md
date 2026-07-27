@@ -249,7 +249,7 @@ A normal scan only sees what you point it at. Most engineers don't remember ever
 MCP client they've installed, so a laptop routinely has server configs no project
 review ever touches — this is exactly [OWASP MCP09:2025 "Shadow MCP
 Servers"](https://owasp.org/www-project-mcp-top-10/). `--discover` checks the
-well-known, user-scope config paths for five clients and runs the normal rule set
+well-known, user-scope config paths for seven clients and runs the normal rule set
 against whichever ones exist:
 
 | Client | Config checked |
@@ -259,10 +259,20 @@ against whichever ones exist:
 | Cursor | `~/.cursor/mcp.json` (global scope) |
 | VS Code / Copilot | `mcp.json` in the VS Code user profile |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Amazon Q Developer CLI | `~/.aws/amazonq/mcp.json` (global scope) |
+| Cline | `cline_mcp_settings.json` in VS Code's per-extension `globalStorage` |
+
+Amazon Q's *global* config is a separate file from its workspace-scoped
+`.amazonq/mcp.json` — the path CVE-2026-12957 (Wiz Research, disclosed
+2026-06-26, CVSS 8.5) actually exploited. That workspace file already
+surfaces in a normal directory scan (its basename, `mcp.json`, already
+matches regardless of which directory it's under), so this addition is the
+global config a directory scan would never reach, not a re-fix of the
+disclosed CVE itself.
 
 ```console
 $ mcpscan --discover
-mcpscan --discover  checked 5 known MCP client config location(s) for win32
+mcpscan --discover  checked 7 known MCP client config location(s) for win32
 
 [x] Claude Code CLI (user) — C:\Users\you\.claude.json
 mcpscan  scanned 1 files in C:\Users\you\.claude.json
@@ -273,16 +283,16 @@ mcpscan  scanned 1 files in C:\Users\you\.claude.json
 
 [ ] Cursor (global) — not present (C:\Users\you\.cursor\mcp.json)
 ...
-Discovery summary: 2/5 location(s) present, 1 finding(s) total.
+Discovery summary: 2/7 location(s) present, 1 finding(s) total.
 ```
 
 Scope, on purpose: this is **per-machine only** — there's no fleet/remote-collection
 step, so run it on each machine you want visibility into. It also only checks
 *known, standard* paths; it's not a filesystem-wide crawl for anything named
 `mcp.json`. Project-scoped configs (`.cursor/mcp.json`, `.vscode/mcp.json`, a repo's
-own `.mcp.json`) already surface in a normal directory scan of that project, so
-`--discover` only adds the global/user-level configs a directory scan would never
-see. Supports `--format text`, `json`, and `sarif` (one run, results point at each
+own `.mcp.json`, a workspace's own `.amazonq/mcp.json`) already surface in a normal
+directory scan of that project, so `--discover` only adds the global/user-level
+configs a directory scan would never see. Supports `--format text`, `json`, and `sarif` (one run, results point at each
 client's full config path so a SARIF viewer can tell Cursor's `mcp.json` apart from
 VS Code's); `--fix`/`--apply-fix` aren't wired up for discovery mode yet.
 

@@ -63,17 +63,35 @@ def known_locations(platform: Optional[str] = None) -> List[ClientLocation]:
     value to inspect what mcpscan would check on a different OS.
 
     Deliberately excludes project-scoped files (``.cursor/mcp.json``,
-    ``.vscode/mcp.json``, a repo's own ``.mcp.json``) — those already surface
-    in a normal directory scan of the project. This table is only the
+    ``.vscode/mcp.json``, a repo's own ``.mcp.json``, a workspace's
+    ``.amazonq/mcp.json``) — those already surface in a normal directory
+    scan of the project (``loaders.MANIFEST_NAMES`` matches "mcp.json" by
+    basename regardless of which directory it's under, and MCP004's
+    candidate filter matches any ``.json`` file — verified directly against
+    a scratch ``.amazonq/mcp.json`` fixture with ``autoApprove: true`` before
+    adding these two entries, to confirm project-scoped Amazon Q/Cline
+    configs weren't a silent gap already). This table is only the
     global/user-level configs a directory scan would never see because
     they live outside any project tree.
 
-    Sources (verified, not guessed, 2026-07-09):
+    Sources (verified, not guessed, 2026-07-09; two more added 2026-07-27):
     - Claude Desktop: Anthropic's own MCP quickstart / support docs.
     - Cursor: cursor.com/docs/mcp.
     - VS Code / Copilot: code.visualstudio.com/docs/agents/reference/mcp-configuration.
     - Claude Code CLI: code.claude.com/docs/en/mcp.
     - Windsurf: docs.windsurf.com/windsurf/cascade/mcp.
+    - Amazon Q Developer CLI (global): docs.aws.amazon.com/amazonq — a
+      *separate* config from the workspace-scoped ``.amazonq/mcp.json`` that
+      CVE-2026-12957 (Wiz Research) disclosed; that workspace file is a
+      project-scoped path a normal scan already covers, but this global one
+      at ``~/.aws/amazonq/mcp.json`` applies across every workspace and
+      lives outside any project tree, so ``--discover`` is the only mcpscan
+      mode that would ever see it.
+    - Cline (global, VS Code extension storage):
+      github.com/cline/cline discussion #2355 + confirmed extension id
+      ``saoudrizwan.claude-dev``. Cline's settings live in VS Code's
+      per-extension ``globalStorage``, not a project-relative path, so this
+      is also otherwise invisible to a directory scan.
     """
     plat = platform or sys.platform
     home = _home()
@@ -106,6 +124,21 @@ def known_locations(platform: Optional[str] = None) -> List[ClientLocation]:
         out.append(ClientLocation("VS Code (user)", os.path.join(home, ".config", "Code", "User", "mcp.json")))
 
     out.append(ClientLocation("Windsurf", os.path.join(home, ".codeium", "windsurf", "mcp_config.json")))
+
+    # Amazon Q Developer CLI's *global* config — same ~/.aws prefix on every
+    # OS (AWS CLI convention), no platform branch needed.
+    out.append(ClientLocation("Amazon Q Developer CLI (global)",
+                               os.path.join(home, ".aws", "amazonq", "mcp.json")))
+
+    cline_settings = os.path.join("Code", "User", "globalStorage", "saoudrizwan.claude-dev",
+                                   "settings", "cline_mcp_settings.json")
+    if plat == "win32":
+        out.append(ClientLocation("Cline (global)", os.path.join(appdata, cline_settings)))
+    elif plat == "darwin":
+        out.append(ClientLocation("Cline (global)", os.path.join(
+            home, "Library", "Application Support", cline_settings)))
+    else:
+        out.append(ClientLocation("Cline (global)", os.path.join(home, ".config", cline_settings)))
 
     return out
 

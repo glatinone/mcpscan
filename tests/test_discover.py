@@ -36,17 +36,29 @@ def _write_cursor_config(tmp_dir: str, content: str) -> None:
         fh.write(content)
 
 
+def _write_amazonq_global_config(tmp_dir: str, content: str) -> None:
+    """Write a fake *global* Amazon Q config (~/.aws/amazonq/mcp.json) under a
+    tempdir standing in for HOME. tmp_dir is always pytest/tempfile-owned.
+    """
+    aq_dir = os.path.join(tmp_dir, ".aws", "amazonq")
+    os.makedirs(aq_dir)
+    with open(os.path.join(aq_dir, "mcp.json"), "w", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007]
+        fh.write(content)
+
+
 class TestKnownLocations(unittest.TestCase):
-    def test_covers_all_five_clients_on_every_platform(self):
+    def test_covers_all_seven_clients_on_every_platform(self):
         for plat in ("win32", "darwin", "linux"):
             locs = known_locations(platform=plat)
             clients = {loc.client for loc in locs}
-            self.assertEqual(len(locs), 5, f"expected 5 locations on {plat}, got {len(locs)}")
+            self.assertEqual(len(locs), 7, f"expected 7 locations on {plat}, got {len(locs)}")
             self.assertIn("Claude Desktop", clients)
             self.assertIn("Claude Code CLI (user)", clients)
             self.assertIn("Cursor (global)", clients)
             self.assertIn("VS Code (user)", clients)
             self.assertIn("Windsurf", clients)
+            self.assertIn("Amazon Q Developer CLI (global)", clients)
+            self.assertIn("Cline (global)", clients)
 
     def test_paths_differ_per_platform_for_appdata_based_clients(self):
         with mock.patch.dict(os.environ, {"HOME": "/home/tester", "APPDATA": "C:\\Users\\tester\\AppData\\Roaming"}):
@@ -57,6 +69,12 @@ class TestKnownLocations(unittest.TestCase):
         self.assertNotEqual(mac["Claude Desktop"], linux["Claude Desktop"])
         # Project-agnostic clients (no OS-specific branch) resolve identically.
         self.assertEqual(win["Cursor (global)"], mac["Cursor (global)"])
+        # Amazon Q's global config always sits under ~/.aws — same on every OS.
+        self.assertEqual(win["Amazon Q Developer CLI (global)"], mac["Amazon Q Developer CLI (global)"])
+        self.assertEqual(mac["Amazon Q Developer CLI (global)"], linux["Amazon Q Developer CLI (global)"])
+        # Cline's globalStorage path is OS-specific like VS Code's own user dir.
+        self.assertNotEqual(win["Cline (global)"], mac["Cline (global)"])
+        self.assertNotEqual(mac["Cline (global)"], linux["Cline (global)"])
 
     def test_resolves_against_patched_home_not_real_home(self):
         with mock.patch.dict(os.environ, {"HOME": "/home/tester", "USERPROFILE": "", "APPDATA": ""}, clear=False):
@@ -88,6 +106,18 @@ class TestRunDiscovery(unittest.TestCase):
         self.assertEqual(cursor_result.report.findings[0].rule_id, "MCP012")
         self.assertEqual(discovery.found_count, 1)
         self.assertEqual(len(discovery.all_findings()), 1)
+
+    def test_amazonq_global_config_is_scanned_with_the_normal_rule_set(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _write_amazonq_global_config(tmp, VULN_REMOTE_SERVER)
+
+            with mock.patch.dict(os.environ, {"HOME": tmp, "USERPROFILE": tmp, "APPDATA": os.path.join(tmp, "AppData")}):
+                discovery = run_discovery(platform="linux")
+
+        aq_result = next(r for r in discovery.results if r.location.client == "Amazon Q Developer CLI (global)")
+        self.assertTrue(aq_result.found)
+        self.assertTrue(aq_result.report.findings)
+        self.assertEqual(aq_result.report.findings[0].rule_id, "MCP012")
 
     def test_clean_config_at_a_known_location_produces_no_findings(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-27
+
+### Added
+
+- **`--discover` now checks two more global MCP client config locations**:
+  Amazon Q Developer CLI's global config (`~/.aws/amazonq/mcp.json`) and
+  Cline's global config (`cline_mcp_settings.json` in VS Code's
+  per-extension `globalStorage`). Per `research/2026-07-27.md`'s top
+  compounding opportunity, prompted by CVE-2026-12957 (Amazon Q, Wiz
+  Research, CVSS 8.5, disclosed 2026-06-26) — a workspace-committed MCP
+  config auto-executing with zero trust prompt. Verified directly before
+  building anything: that CVE's actual exploited path,
+  `.amazonq/mcp.json`, is *workspace*-scoped and already caught by a normal
+  directory scan today (its basename matches `loaders.MANIFEST_NAMES`
+  regardless of directory, and MCP004's candidate filter matches any
+  `.json` file), confirmed against a scratch fixture with `autoApprove:
+  true` before writing any code. The real, previously-uncovered gap was
+  Amazon Q's *separate* global config and Cline's global config — both
+  live outside any project tree, so `--discover` is the only mcpscan mode
+  that would ever see them. `--discover` now checks 7 known locations
+  (was 5). 131 tests passing (was 130).
+
 ## [0.15.1] - 2026-07-21
 
 ### Fixed
