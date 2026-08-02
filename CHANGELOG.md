@@ -6,12 +6,42 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Fixed
+## [0.17.0] - 2026-08-03
 
-- README's GitHub Action and pre-commit hook examples still pinned
-  `v0.15.1`, one release behind the actual latest tag. Bumped both to
-  `v0.16.0` so a copy-pasted example doesn't pin new adopters to a stale
-  release.
+### Added
+
+- **MCP021: a click handler that dispatches a privileged action with no
+  `event.isTrusted` check.** Per `research/2026-07-31.md`'s top
+  coverage-adjusted candidate (Final 12), unbuilt since first flagged
+  `research/2026-07-28.md` and carried across three research cycles.
+  Verified the root-cause mechanism directly (Manifold Security's own
+  write-up, corroborated by Bleeping Computer and The Hacker News) rather
+  than trusting the research digest's paraphrase: Claude for Chrome's
+  content-script click handler reads `data-task-id` off the clicked
+  element and dispatches the associated agentic task, but never checks
+  `event.isTrusted` — reported to Anthropic's bug bounty program
+  2026-05-21, confirmed still broken against the shipped v1.0.80 on
+  2026-07-07, no CVE assigned, unfixed as of the most recent reporting
+  found. Any other script with DOM access on the page (commonly another
+  installed extension) can forge the click a privileged action relies on.
+  New `mcpscan/rules/dom_trust.py`: fires on a `click`/`onclick` handler
+  that reads element data (`.dataset.x`/`getAttribute(...)`) and forwards
+  it to a privileged sink (extension messaging, or an
+  approve/grant/authorize-named call), with no `isTrusted` check anywhere
+  in the handler. Scoped to JS/TS source files only (`event.isTrusted` is
+  a browser DOM concept, not applicable to Python). 10 new tests
+  (`tests/test_dom_trust.py`), new vulnerable/clean `content.js` fixtures.
+  141 tests passing (was 131). Dogfood self-scan clean. Verified
+  end-to-end with the real CLI against both fixture directories.
+
+### README/CHANGELOG carryover note
+
+- `research/2026-07-31.md`'s only other actionable candidate this cycle
+  (a git-hook sandbox-escape rule for CVE-2026-26268) was deliberately not
+  built: its two primary sources describe materially different exploit
+  mechanisms (a pre-existing hostile hook vs. an agent's own injected
+  write), and mcpscan doesn't ship a rule against an unverified mechanism
+  in a security tool. Revisit once Cursor's own advisory is read directly.
 
 ## [0.16.0] - 2026-07-27
 
@@ -598,7 +628,9 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/glatinone/mcpscan/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/glatinone/mcpscan/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/glatinone/mcpscan/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/glatinone/mcpscan/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/glatinone/mcpscan/compare/v0.13.0...v0.14.0

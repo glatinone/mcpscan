@@ -89,6 +89,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP018** | 🛰️ Unauthenticated connect/exec endpoint | Critical | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A server bound to every network interface (`0.0.0.0`, or `.listen(port)` with no host) exposes a connect/exec-shaped route that spawns a process from a command/args value taken straight out of the request body, with no auth check in the handler |
 | **MCP019** | 📥 `workflow_run` token/artifact reuse | Critical | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A workflow triggers on `workflow_run` (runs with the base repo's secrets even for a fork PR) and checks out the triggering run's own commit/branch, or downloads an artifact it produced (`actions/download-artifact`/`dawidd6/action-download-artifact` referencing `github.event.workflow_run.id`) |
 | **MCP020** | 🔓 Missing `permissions:` block | Medium | [MCP02:2025](#-owasp-mcp-top-10-mapping) | A workflow with no explicit top-level or job-level `permissions:` key anywhere, relying on the repo/org default token scope, that also writes to GitHub (a release, PR/issue comment, push, or write-verb API call) |
+| **MCP021** | 🖱️ Untrusted click-to-privileged-action | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A `click`/`onclick` handler reads data off the clicked element (`.dataset.x`, `getAttribute(...)`) and forwards it to a privileged sink (extension messaging, or an approve/grant/authorize call) with no `event.isTrusted` check anywhere in the handler |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -108,7 +109,7 @@ output.
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016, MCP019 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
-| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018 |
+| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018, MCP021 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
 | MCP09:2025 | Shadow MCP Servers | `--discover` (v0.7.0) |
 | MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
@@ -184,6 +185,16 @@ workflows correctly need no elevated scope at all (this project's own
 something that actually writes to GitHub; see [the worked example
 below](#mcp019mcp020-your-cis-token-scope-is-now-in-scope-too) for the exact
 reasoning.
+
+MCP021 maps to MCP07 (Insufficient Authentication & Authorization), the same
+category as MCP010/MCP012/MCP018: the finding is specifically the *absence
+of a check that the acting party is who it claims to be* — a click handler
+that can't tell a real user gesture from a synthetic one dispatched by
+another script is failing to authenticate its caller, the same root cause
+as a missing credential check, just at the DOM-event layer instead of an
+HTTP layer. See [the worked example
+below](#mcp021-a-synthetic-click-is-indistinguishable-from-a-real-one) for
+the disclosure this closes.
 
 ### 🌟 The differentiator: tool poisoning
 
@@ -489,6 +500,35 @@ calling a write-shaped REST/GraphQL method from inside its JS callback is a
 known, deliberate gap: catching that would mean parsing the script body,
 not just a YAML line window.
 
+### MCP021: a synthetic click is indistinguishable from a real one
+
+Claude for Chrome's own click-spoofing flaw (reported to Anthropic's bug
+bounty program 2026-05-21, still unpatched against the shipped v1.0.80 as
+of 2026-07-07 — confirmed by Manifold Security and corroborated by
+Bleeping Computer and The Hacker News): a content-script click handler
+reads `data-task-id` off the clicked element and dispatches the associated
+agentic task, but never checks `event.isTrusted`. Any other script with DOM
+access on the page — commonly another installed browser extension — can
+build the same element and fire a synthetic click
+(`element.dispatchEvent(new MouseEvent('click'))`), and the handler has no
+way to tell it apart from a real user gesture:
+
+```console
+$ mcpscan .
+   HIGH    MCP021  Click handler dispatches a privileged action with no event.isTrusted check [MCP07:2025]
+           content.js:8
+           > chrome.runtime.sendMessage({ type: "run-task", taskId });
+```
+
+MCP021 fires on two co-occurring conditions in the same `click`/`onclick`
+handler: it reads data off the clicked element itself (`.dataset.x`,
+`getAttribute(...)`), and forwards that data to a privileged sink
+(extension/background messaging, or an approve/grant/authorize-named
+call) — with no `event.isTrusted` check anywhere in the handler. Adding
+`if (!event.isTrusted) return;` before the handler reads or acts on
+anything suppresses the finding; so does a handler that never reads
+element data at all (a purely cosmetic click).
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -584,7 +624,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.16.0
+      - uses: glatinone/mcpscan@v0.17.0
         with:
           path: .
           min-severity: high
@@ -610,7 +650,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.16.0
+    rev: v0.17.0
     hooks:
       - id: mcpscan
 ```
@@ -665,7 +705,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      20 independent rules, each yielding Findings
+   rule registry      21 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -785,6 +825,10 @@ ships from the tagged commit, not from `main`.
   block at all)~~ (MCP019, v0.14.0, completed and split into two properly
   scoped rules in v0.15.0 (MCP020 added, MCP019 corrected), see
   [above](#mcp019mcp020-your-cis-token-scope-is-now-in-scope-too))
+- [x] ~~A click/message handler that trusts a synthetic DOM event with no
+  `isTrusted`/origin check~~ (MCP021, v0.17.0, the still-unpatched Claude for
+  Chrome click-spoofing flaw — see
+  [above](#mcp021-a-synthetic-click-is-indistinguishable-from-a-real-one))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 
