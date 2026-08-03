@@ -50,11 +50,12 @@ DISCOVER_TOOL = {
     "name": "discover",
     "description": (
         "Enumerate well-known MCP client config locations on this machine (Claude "
-        "Desktop, Claude Code CLI, Cursor, VS Code, Windsurf) and scan whichever "
-        "exist with mcpscan's normal rule set. Closes OWASP MCP09:2025 (Shadow MCP "
-        "Servers) — surfaces servers a directory scan of a single project would "
-        "never see, since these configs live outside any project tree. Returns a "
-        "JSON report. Read-only; never executes the scanned code."
+        "Desktop, Claude Code CLI, Cursor, VS Code, Windsurf, Amazon Q Developer "
+        "CLI, Cline) and scan whichever exist with mcpscan's normal rule set. "
+        "Closes OWASP MCP09:2025 (Shadow MCP Servers) — surfaces servers a "
+        "directory scan of a single project would never see, since these configs "
+        "live outside any project tree. Returns a JSON report. Read-only; never "
+        "executes the scanned code."
     ),
     "inputSchema": {
         "type": "object",
