@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-03
+
+### Added
+
+- **MCP022: a loopback-bound server that accepts cross-origin requests
+  because it never checks the `Origin` header.** Per
+  `research/2026-08-03.md`'s top coverage-adjusted candidate (Final 11).
+  Binding to `127.0.0.1`/`localhost` is often (wrongly) treated as
+  equivalent to "unreachable by web content" — any browser tab open on the
+  same machine can still reach it via CORS or an unauthenticated WebSocket
+  upgrade. This exact pattern has now surfaced three times independently:
+  Ollama's long-known default-CORS behavior, BraveMCP's own HTTP bridge
+  before it was fixed 2026-07-13 (v0.2.0), and Cline's Hub dashboard
+  WebSocket, still open today, which accepts unauthenticated
+  `desktopCommand` frames when its `ROOM_SECRET` is left at its empty
+  default. New `mcpscan/rules/origin_check.py`: fires when a bind call is
+  explicitly scoped to loopback only (not bind-all — that's MCP018) and
+  either a permissive CORS setup (bare `cors()`, bare `CORS(app)`, or a
+  literal `Access-Control-Allow-Origin: *`) or a WebSocket `connection`
+  handler with no `Origin` check anywhere in the handler window is present
+  in the same file. 10 new tests (`tests/test_origin_check.py`), new
+  vulnerable/clean `bridge.js` fixture pair plus MCP022 additions to the
+  existing `server.py` fixtures. 151 tests passing (was 141). Dogfood
+  self-scan clean. Verified end-to-end with the real CLI against both
+  fixture directories, not just pytest, before committing.
+
 ## [0.17.0] - 2026-08-03
 
 ### Added
@@ -628,7 +654,8 @@ passing (was 56). Dogfood self-scan clean.
 - Severity-based exit codes for CI gating.
 - Vulnerable and clean test fixtures.
 
-[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/glatinone/mcpscan/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/glatinone/mcpscan/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/glatinone/mcpscan/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/glatinone/mcpscan/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/glatinone/mcpscan/compare/v0.15.0...v0.15.1

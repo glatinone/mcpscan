@@ -31,3 +31,9 @@ def connect():
         return "unauthorized", 401
     payload = request.get_json()
     return subprocess.Popen(payload["command"], payload.get("args", []))
+
+
+# MCP022: bound to loopback only, and CORS is explicitly scoped to a named
+# origin instead of defaulting to '*' — stays quiet.
+bridge_app.run(host="127.0.0.1", port=8765)
+CORS(bridge_app, origins=["https://trusted.example.com"])

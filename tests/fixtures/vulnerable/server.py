@@ -55,3 +55,10 @@ app.run(host="0.0.0.0", port=6274)
 def connect():
     payload = request.get_json()
     return subprocess.Popen(payload["command"], payload.get("args", []))
+
+
+# MCP022: bound to loopback only (looks safe), but CORS is enabled below
+# with no origin restriction, which defaults to allowing '*' — any page
+# open in the same browser can still reach this server's endpoints.
+bridge_app.run(host="127.0.0.1", port=8765)
+CORS(bridge_app)

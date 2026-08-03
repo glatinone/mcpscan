@@ -90,6 +90,7 @@ mcpscan ./path-to-an-mcp-server
 | **MCP019** | 📥 `workflow_run` token/artifact reuse | Critical | [MCP04:2025](#-owasp-mcp-top-10-mapping) | A workflow triggers on `workflow_run` (runs with the base repo's secrets even for a fork PR) and checks out the triggering run's own commit/branch, or downloads an artifact it produced (`actions/download-artifact`/`dawidd6/action-download-artifact` referencing `github.event.workflow_run.id`) |
 | **MCP020** | 🔓 Missing `permissions:` block | Medium | [MCP02:2025](#-owasp-mcp-top-10-mapping) | A workflow with no explicit top-level or job-level `permissions:` key anywhere, relying on the repo/org default token scope, that also writes to GitHub (a release, PR/issue comment, push, or write-verb API call) |
 | **MCP021** | 🖱️ Untrusted click-to-privileged-action | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A `click`/`onclick` handler reads data off the clicked element (`.dataset.x`, `getAttribute(...)`) and forwards it to a privileged sink (extension messaging, or an approve/grant/authorize call) with no `event.isTrusted` check anywhere in the handler |
+| **MCP022** | 🌉 Loopback bridge with no Origin check | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A server bound to `127.0.0.1`/`localhost` only (not bind-all — that's MCP018) has a permissive CORS setup (bare `cors()`, bare `CORS(app)`, or a literal `Access-Control-Allow-Origin: *`) or a WebSocket `connection` handler with no `Origin` check anywhere in the handler |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -109,7 +110,7 @@ output.
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016, MCP019 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
-| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018, MCP021 |
+| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018, MCP021, MCP022 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
 | MCP09:2025 | Shadow MCP Servers | `--discover` (v0.7.0) |
 | MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
@@ -529,6 +530,36 @@ call) — with no `event.isTrusted` check anywhere in the handler. Adding
 anything suppresses the finding; so does a handler that never reads
 element data at all (a purely cosmetic click).
 
+### MCP022: "bound to localhost" isn't the same as "unreachable"
+
+Binding a local bridge server to `127.0.0.1`/`localhost` is commonly (and
+wrongly) treated as equivalent to "no one but me can reach this." It isn't:
+any browser tab open on the same machine can still reach a loopback-bound
+HTTP or WebSocket server, unless the server explicitly checks the `Origin`
+header. This exact pattern has now surfaced three times independently —
+Ollama's long-known default-CORS behavior, BraveMCP's own HTTP bridge
+before it was fixed 2026-07-13 (v0.2.0, [glatinone/BraveMCP](https://github.com/glatinone/BraveMCP)),
+and Cline's Hub dashboard WebSocket, still open today, which accepts
+unauthenticated `desktopCommand` frames when its `ROOM_SECRET` is left at
+its empty default:
+
+```console
+$ mcpscan .
+   HIGH    MCP022  Loopback-bound server has a permissive CORS setup [MCP07:2025]
+           bridge.js:4
+           > app.use(cors());
+```
+
+MCP022 requires a server explicitly bound to loopback only (`127.0.0.1` or
+`localhost` — a bind-*all* server is MCP018's territory, not this rule's)
+co-occurring with either a permissive CORS setup (a bare `cors()` call, a
+bare `CORS(app)` call, or a literal `Access-Control-Allow-Origin: *`
+header — all of which default to or explicitly set the wildcard) or a
+WebSocket `connection` handler with no `Origin` check anywhere in the
+handler window. Restricting CORS to a named origin, or validating
+`req.headers.origin` before accepting a WebSocket upgrade, both suppress
+the finding.
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -624,7 +655,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: glatinone/mcpscan@v0.17.0
+      - uses: glatinone/mcpscan@v0.18.0
         with:
           path: .
           min-severity: high
@@ -650,7 +681,7 @@ Catch a risky MCP config before it's even pushed, using
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/glatinone/mcpscan
-    rev: v0.17.0
+    rev: v0.18.0
     hooks:
       - id: mcpscan
 ```
@@ -705,7 +736,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mcpscan-mcp
 discover_files()      walk the target, skip node_modules/.git, classify each file
         │             (source · config · manifest · .claude/)
         ▼
-   rule registry      21 independent rules, each yielding Findings
+   rule registry      22 independent rules, each yielding Findings
         │             (a buggy rule can't crash the scan)
         ▼
      Report           aggregate · sort by severity · count
@@ -829,6 +860,10 @@ ships from the tagged commit, not from `main`.
   `isTrusted`/origin check~~ (MCP021, v0.17.0, the still-unpatched Claude for
   Chrome click-spoofing flaw — see
   [above](#mcp021-a-synthetic-click-is-indistinguishable-from-a-real-one))
+- [x] ~~A loopback-bound bridge server with a permissive CORS setup or no
+  WebSocket Origin check~~ (MCP022, v0.18.0, the same bug class BraveMCP's
+  own bridge shipped and fixed in v0.2.0 — see
+  [above](#mcp022-bound-to-localhost-isnt-the-same-as-unreachable))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 
