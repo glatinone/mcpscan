@@ -1,12 +1,16 @@
-# Publish to PyPI when a GitHub Release is published, using PyPI Trusted
-# Publishing (OIDC) — no API token stored anywhere.
+# Publish to PyPI when a GitHub Release is published, using a PyPI API
+# token (not OIDC trusted publishing — trusted-publisher setup on the PyPI
+# side kept rejecting the token exchange with `invalid-publisher` across
+# repeated attempts, so this pivots to a stored secret instead).
 #
-# One-time setup on PyPI (https://pypi.org/manage/account/publishing/):
-#   Project name:        mcpscan
-#   Owner:               glatinone
-#   Repository name:     mcpscan
-#   Workflow filename:   pypi-publish.yml
-#   Environment name:    pypi
+# One-time setup:
+#   1. Create an API token at https://pypi.org/manage/account/token/.
+#   2. Add it as a secret named PYPI_API_TOKEN: either on the repo
+#      (Settings -> Secrets and variables -> Actions -> New repository
+#      secret) or on the "pypi" environment (Settings -> Environments ->
+#      pypi -> Environment secrets). Run `gh secret set PYPI_API_TOKEN`
+#      yourself in your own terminal — it prompts for the value directly,
+#      so it's never pasted anywhere else.
 #
 # Then: draft a GitHub Release (tag e.g. v0.19.0) and click "Publish release" —
 # this workflow runs the test suite, builds, and publishes automatically.
@@ -40,7 +44,6 @@ jobs:
       name: pypi
       url: https://pypi.org/p/mcpscan
     permissions:
-      id-token: write        # required for trusted publishing
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -53,3 +56,5 @@ jobs:
           python -m build
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
