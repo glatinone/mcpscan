@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mcpscan"
+name = "mcpscan-cli"
 version = "0.19.1"
 description = "Supply-chain security scanner for MCP servers and Claude Code projects — catch tool-poisoning, command injection and risky permissions before you install."
 readme = "README.md"

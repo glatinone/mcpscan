@@ -56,7 +56,7 @@ scanner you can run in one command or wire into CI.
 
 ```bash
 # Install from PyPI:
-pip install mcpscan
+pip install mcpscan-cli
 mcpscan ./path-to-an-mcp-server
 
 # Or run it from a clone with no install:
@@ -647,7 +647,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install mcpscan
+      - run: pip install mcpscan-cli
       - run: mcpscan . --min-severity high
 ```
 
@@ -827,7 +827,7 @@ ships from the tagged commit, not from `main`.
 
 ## 🗺️ Roadmap
 
-- [ ] Publish to PyPI (`pipx install mcpscan`)
+- [ ] Publish to PyPI (`pipx install mcpscan-cli`)
 - [x] ~~`--fix` mode with suggested patches~~ (MCP009 / MCP010, v0.4.0 — see [above](#--fix-mechanical-not-magical))
 - [x] ~~Ship as an **MCP server** so agents can scan tools on demand~~ (`mcpscan-mcp`)
 - [x] ~~GitHub Action~~ (`uses: glatinone/mcpscan@v0.4.0`)
