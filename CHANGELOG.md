@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-08-10
+
+### Changed
+
+- **PyPI publish auth switched from OIDC trusted publishing to a stored
+  API token.** The 0.19.0 release never actually published: PyPI
+  consistently rejected the OIDC token exchange with `invalid-publisher`
+  across multiple attempts, with the OIDC claims on GitHub's side verified
+  correct and unchanged each time — the mismatch was in the PyPI-side
+  trusted-publisher configuration, which repeated re-checks didn't
+  resolve. `.github/workflows/pypi-publish.yml` now authenticates via
+  `secrets.PYPI_API_TOKEN` instead; `permissions: id-token: write` was
+  removed since it's no longer needed.
+- Cut this release specifically to get a clean tag/release not entangled
+  with the several failed 0.19.0 publish attempts.
+
 ## [0.19.0] - 2026-08-10
 
 ### Added
