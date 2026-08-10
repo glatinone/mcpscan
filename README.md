@@ -55,21 +55,20 @@ scanner you can run in one command or wire into CI.
 ## ⚡ Quickstart
 
 ```bash
-# Run it right now — no install needed:
+# Install from PyPI:
+pip install mcpscan
+mcpscan ./path-to-an-mcp-server
+
+# Or run it from a clone with no install:
 git clone https://github.com/glatinone/mcpscan && cd mcpscan
 python -m mcpscan tests/fixtures/vulnerable      # see it light up
 
-# Install as a CLI:
+# Or install from a clone for local development:
 pip install -e .
-mcpscan ./path-to-an-mcp-server
 ```
 
 > **Requirements:** Python 3.9+ and nothing else. No pip dependencies, no network calls,
 > no telemetry. It only reads files.
-
-> **Not yet on PyPI.** `pip install mcpscan` doesn't work yet — install from a clone as
-> shown above, or pin the [GitHub Action](#-continuous-integration) or
-> [pre-commit hook](#as-a-pre-commit-hook) to a tagged release. See [Roadmap](#-roadmap).
 
 ---
 
@@ -648,7 +647,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install -e .
+      - run: pip install mcpscan
       - run: mcpscan . --min-severity high
 ```
 
