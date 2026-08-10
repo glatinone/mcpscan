@@ -28,6 +28,14 @@ $ mcpscan ./some-mcp-server
 
 ---
 
+## 📋 TL;DR
+
+**Problem:** MCP servers and Claude Code projects ship with zero standard security vetting — tool-poisoning, command injection, and leaked secrets go straight into `.claude/` directories.
+**Solution:** `mcpscan` statically scans any MCP server or `.claude/` directory in one command — zero dependencies, zero network calls, zero telemetry.
+**Output:** SARIF 2.1.0 — drops straight into GitHub code scanning and CI gates.
+
+---
+
 ## 🤔 Why?
 
 The MCP ecosystem exploded past **14,000+ servers** in 2026 — and so did the attack surface:
