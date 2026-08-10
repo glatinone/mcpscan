@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-10
+
+### Added
+
+- **First PyPI release.** `pip install mcpscan` now works — no more
+  clone-and-`pip install -e .` as the only path. `pyproject.toml` was
+  already fully configured (entry points, MIT license, zero deps,
+  classifiers); this release just cuts the actual tag.
+- `.github/workflows/pypi-publish.yml`: publishes to PyPI via Trusted
+  Publishing (OIDC, no stored token) on GitHub Release publish, running
+  the full test suite and a self-scan first. Replaces the old tag-push
+  `release.yml` — having two divergent publish triggers risked firing
+  twice on the same version.
+- `THREAT_MODEL.md`, added the previous release: STRIDE-based threat
+  model for mcpscan itself.
+
+### Changed
+
+- README Quickstart leads with `pip install mcpscan`. Fixed the GitHub
+  Action CI example, which showed `pip install -e .` — that only ever
+  made sense for mcpscan's own CI, not as a copy-paste snippet for a
+  consumer's repo; it's now `pip install mcpscan`.
+
 ## [0.18.0] - 2026-08-03
 
 ### Added
