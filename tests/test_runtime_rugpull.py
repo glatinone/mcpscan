@@ -33,7 +33,9 @@ class TestFingerprint(unittest.TestCase):
 class TestFirstSighting(unittest.TestCase):
     def test_first_sighting_of_a_tool_returns_no_drift(self):
         ledger = RugPullLedger()
-        report = ledger.check("mail-mcp", "send_email", "Sends an email to a recipient.")
+        report = ledger.check(
+            "mail-mcp", "send_email", "Sends an email to a recipient."
+        )
 
         self.assertIsNone(report)
         self.assertIn(("mail-mcp", "send_email"), ledger.known_tools())
@@ -70,7 +72,12 @@ class TestDescriptionDrift(unittest.TestCase):
 class TestSchemaDrift(unittest.TestCase):
     def test_schema_change_between_checks_is_reported(self):
         ledger = RugPullLedger()
-        ledger.check("finance-mcp", "get_balance", "Gets account balance.", '{"props": ["account_id"]}')
+        ledger.check(
+            "finance-mcp",
+            "get_balance",
+            "Gets account balance.",
+            '{"props": ["account_id"]}',
+        )
         report = ledger.check(
             "finance-mcp",
             "get_balance",
@@ -101,7 +108,9 @@ class TestPerServerIsolation(unittest.TestCase):
     def test_same_tool_name_on_different_servers_is_tracked_independently(self):
         ledger = RugPullLedger()
         ledger.check("server-a", "shared_tool_name", "Description from server A.")
-        report = ledger.check("server-b", "shared_tool_name", "Description from server B.")
+        report = ledger.check(
+            "server-b", "shared_tool_name", "Description from server B."
+        )
 
         self.assertIsNone(report)
         self.assertEqual(len(ledger.known_tools()), 2)
@@ -112,7 +121,9 @@ class TestPerServerIsolation(unittest.TestCase):
         ledger.check("s1", "b", "d")
         ledger.check("s2", "a", "d")
 
-        self.assertEqual(set(ledger.known_tools()), {("s1", "a"), ("s1", "b"), ("s2", "a")})
+        self.assertEqual(
+            set(ledger.known_tools()), {("s1", "a"), ("s1", "b"), ("s2", "a")}
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

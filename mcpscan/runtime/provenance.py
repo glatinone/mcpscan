@@ -42,7 +42,9 @@ class ProvenanceResult:
 class ProvenanceWrapper:
     """Wraps live MCP tool output in an explicit untrusted-content boundary tag."""
 
-    def __init__(self, *, max_length: int = DEFAULT_MAX_LENGTH, tag_name: str = DEFAULT_TAG_NAME) -> None:
+    def __init__(
+        self, *, max_length: int = DEFAULT_MAX_LENGTH, tag_name: str = DEFAULT_TAG_NAME
+    ) -> None:
         self._max_length = max_length
         self._tag_name = tag_name
 
@@ -70,4 +72,6 @@ class ProvenanceWrapper:
         body = content[: self._max_length] + "... [truncated]" if truncated else content
 
         tagged = f'<{self._tag_name} server="{server}" tool="{tool}">{body}</{self._tag_name}>'
-        return ProvenanceResult(content=tagged, truncated=truncated, original_length=original_length)
+        return ProvenanceResult(
+            content=tagged, truncated=truncated, original_length=original_length
+        )

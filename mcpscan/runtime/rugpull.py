@@ -63,7 +63,9 @@ def fingerprint(description: str, schema_repr: str) -> ToolFingerprint:
     schema (e.g. ``json.dumps(schema, sort_keys=True)``); the caller controls how
     a schema is serialized so this module stays dependency-free.
     """
-    return ToolFingerprint(description_hash=_hash(description), schema_hash=_hash(schema_repr))
+    return ToolFingerprint(
+        description_hash=_hash(description), schema_hash=_hash(schema_repr)
+    )
 
 
 class RugPullLedger:
@@ -77,7 +79,9 @@ class RugPullLedger:
     def __init__(self) -> None:
         self._seen: dict[tuple[str, str], ToolFingerprint] = {}
 
-    def check(self, server: str, tool_name: str, description: str, schema_repr: str = "") -> DriftReport | None:
+    def check(
+        self, server: str, tool_name: str, description: str, schema_repr: str = ""
+    ) -> DriftReport | None:
         """Record the current fingerprint; return a DriftReport if it changed.
 
         Returns None the first time a (server, tool_name) pair is seen, and

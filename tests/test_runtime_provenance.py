@@ -23,7 +23,9 @@ class TestWrapping(unittest.TestCase):
         wrapper = ProvenanceWrapper(tag_name="third_party_output")
         result = wrapper.wrap("data", server="s", tool="t")
 
-        self.assertTrue(result.content.startswith('<third_party_output server="s" tool="t">'))
+        self.assertTrue(
+            result.content.startswith('<third_party_output server="s" tool="t">')
+        )
         self.assertTrue(result.content.endswith("</third_party_output>"))
         self.assertEqual(wrapper.tag_name, "third_party_output")
 
@@ -31,7 +33,10 @@ class TestWrapping(unittest.TestCase):
         wrapper = ProvenanceWrapper()
         result = wrapper.wrap("", server="s", tool="t")
 
-        self.assertEqual(result.content, '<untrusted_mcp_content server="s" tool="t"></untrusted_mcp_content>')
+        self.assertEqual(
+            result.content,
+            '<untrusted_mcp_content server="s" tool="t"></untrusted_mcp_content>',
+        )
         self.assertFalse(result.truncated)
 
 
@@ -43,7 +48,11 @@ class TestSizeCapping(unittest.TestCase):
         self.assertTrue(result.truncated)
         self.assertEqual(result.original_length, 1000)
         self.assertIn("... [truncated]", result.content)
-        self.assertTrue(result.content.startswith('<untrusted_mcp_content server="web-mcp" tool="fetch_page">'))
+        self.assertTrue(
+            result.content.startswith(
+                '<untrusted_mcp_content server="web-mcp" tool="fetch_page">'
+            )
+        )
         self.assertTrue(result.content.endswith("</untrusted_mcp_content>"))
 
     def test_content_at_exactly_the_cap_is_not_truncated(self):
