@@ -22,13 +22,18 @@ class TestVulnerableFixture(unittest.TestCase):
         for rid in ("MCP001", "MCP002", "MCP003", "MCP004", "MCP005",
                     "MCP006", "MCP007", "MCP008", "MCP009", "MCP010", "MCP011",
                     "MCP012", "MCP013", "MCP015", "MCP016", "MCP017", "MCP018",
-                    "MCP019", "MCP020", "MCP021", "MCP022"):
+                    "MCP019", "MCP020", "MCP021", "MCP022", "MCP023"):
             self.assertIn(rid, self.ids, f"{rid} did not fire on the vulnerable fixture")
 
     def test_tool_poisoning_is_critical(self):
         poison = [f for f in self.report.findings if f.rule_id == "MCP002"]
         self.assertTrue(poison)
         self.assertTrue(any(f.severity == Severity.CRITICAL for f in poison))
+
+    def test_policy_override_is_critical(self):
+        override = [f for f in self.report.findings if f.rule_id == "MCP023"]
+        self.assertTrue(override)
+        self.assertTrue(any(f.severity == Severity.CRITICAL for f in override))
 
     def test_secret_is_redacted(self):
         secret = [f for f in self.report.findings if f.rule_id == "MCP005"]
@@ -350,9 +355,9 @@ class TestCli(unittest.TestCase):
     def test_list_rules(self):
         from mcpscan.cli import list_rules
         out = list_rules()
-        for rid in ("MCP001", "MCP011", "MCP012", "MCP014", "MCP015", "MCP016", "MCP017", "MCP018", "MCP019", "MCP020", "MCP021", "MCP022"):
+        for rid in ("MCP001", "MCP011", "MCP012", "MCP014", "MCP015", "MCP016", "MCP017", "MCP018", "MCP019", "MCP020", "MCP021", "MCP022", "MCP023"):
             self.assertIn(rid, out)
-        self.assertIn("22 rules", out)
+        self.assertIn("23 rules", out)
 
     def test_main_clean_exit_zero(self):
         self.assertEqual(self._run([CLEAN, "--no-color"]), 0)
