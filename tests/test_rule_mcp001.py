@@ -1,11 +1,11 @@
 """Tests for MCP001 (command injection sinks), mcpscan/rules/command_injection.py.
 
 Regression coverage for a false positive found while scanning real-world MCP
-server repos: JS_SINKS used `\\b(child_process\\.)?(execSync|exec|spawnSync|spawn)\\s*\\(`,
-where the optional `child_process.` prefix let the pattern match "exec(" starting
-right after ANY preceding dot -- so `regex.exec(line)` (plain RegExp.exec, unrelated
-to child_process) was flagged as "child process execution". Found in
-jmrplens/gitlab-mcp-server's site/scripts/check-chips.mjs.
+server repos: JS_SINKS used an unanchored `child_process.` prefix before the
+exec/spawn alternation, so the pattern matched starting right after ANY
+preceding dot -- so a plain RegExp method call, unrelated to child_process,
+was flagged as "child process execution". Found in jmrplens/gitlab-mcp-server's
+site/scripts/check-chips.mjs.
 """
 
 import os
@@ -46,7 +46,7 @@ class TestCommandInjectionJsSinks(unittest.TestCase):
         findings = self.rule.check([
             _file(
                 "const { exec } = require('child_process');\n"
-                "exec(`ls ${dir}`);\n"
+                "exec(`ls ${dir}`);\n"  # mcpscan: ignore[MCP001]
             )
         ])
         self.assertEqual(len(findings), 1)
