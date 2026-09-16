@@ -19,17 +19,22 @@ PY_SINKS = re.compile(r"\b(os\.system|os\.popen)\b", re.IGNORECASE)
 # subprocess.* is only injectable when shell=True (otherwise the argv is literal).
 PY_SHELL_TRUE = re.compile(r"shell\s*=\s*True")
 
-# Node/TS sinks.
+# Node/TS sinks. A leading `(?<![.\w])` blocks method calls on anything other
+# than `child_process` (e.g. `regex.exec(str)`, `pattern.exec(line)`), which the
+# unanchored `(child_process\.)?` used to let through: it matched "exec(" starting
+# right after the dot, silently skipping whatever object the method was called on.
 JS_SINKS = re.compile(
-    r"\b(child_process\.)?(execSync|exec|spawnSync|spawn)\s*\(",
+    r"(?<![.\w])(?:child_process\.)?(execSync|exec|spawnSync|spawn)\s*\(",
 )
 
 # Heuristic that the command string is dynamically built (interpolation /
 # concatenation / f-string) rather than a constant literal.
 INTERP = re.compile(r"`[^`]*\$\{|\+\s*\w|%\s*\(|\.format\(|f['\"]|\$\{")
 
-# eval-family — always suspicious in a tool handler.
-EVAL = re.compile(r"\beval\s*\(|\bexec\s*\(|\bFunction\s*\(")
+# eval-family — always suspicious in a tool handler. Same `(?<![.\w])` guard as
+# JS_SINKS: an unguarded `\bexec\s*\(` also matched `regex.exec(...)`, since `\b`
+# is satisfied by the transition from "." to "e" regardless of what precedes the dot.
+EVAL = re.compile(r"(?<![.\w])(?:eval|exec|Function)\s*\(")
 
 
 @register
