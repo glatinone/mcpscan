@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Inline suppression now honors every `mcpscan: ignore[...]` marker on a line,
+  not just the first. `# mcpscan: ignore[MCP002] mcpscan: ignore[MCP023]` used
+  to silence only MCP002.
+- Dogfood scan is clean again: MCP023 was flagging the attack sample strings in
+  `tests/test_rule_mcp015.py`, which had kept CI red since the rule landed.
+
 ## [0.19.1] - 2026-08-10
 
 ### Changed

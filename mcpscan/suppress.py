@@ -50,14 +50,16 @@ def path_ignored(relpath: str, patterns: List[str]) -> bool:
 
 
 def _line_suppresses(line: str, rule_id: str) -> bool:
-    m = _MARKER.search(line)
-    if not m:
-        return False
-    ids = m.group(1)
-    if not ids:
-        return True  # bare ignore -> all rules
-    wanted = {x.strip().upper() for x in ids.split(",") if x.strip()}
-    return rule_id.upper() in wanted
+    # A line may carry several markers (`# mcpscan: ignore[MCP002] mcpscan: ignore[MCP023]`),
+    # so check every one, not just the first.
+    for m in _MARKER.finditer(line):
+        ids = m.group(1)
+        if not ids:
+            return True  # bare ignore -> all rules
+        wanted = {x.strip().upper() for x in ids.split(",") if x.strip()}
+        if rule_id.upper() in wanted:
+            return True
+    return False
 
 
 def is_suppressed(finding: Finding, lines_by_path: Dict[str, List[str]]) -> bool:

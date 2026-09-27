@@ -337,6 +337,11 @@ class TestSuppression(unittest.TestCase):
         self.assertTrue(is_suppressed(f2, lines))
         self.assertFalse(is_suppressed(f3, lines))
 
+        multi = {"c.py": ["x  # mcpscan: ignore[MCP002] mcpscan: ignore[MCP023]"]}
+        self.assertTrue(is_suppressed(Finding("MCP002", "t", Severity.HIGH, "c.py", 1), multi))
+        self.assertTrue(is_suppressed(Finding("MCP023", "t", Severity.HIGH, "c.py", 1), multi))
+        self.assertFalse(is_suppressed(Finding("MCP001", "t", Severity.HIGH, "c.py", 1), multi))
+
         self.assertTrue(path_ignored("vendor/x.py", ["vendor"]))
         self.assertTrue(path_ignored("a/b/secrets.json", ["secrets.json"]))
         self.assertFalse(path_ignored("src/app.py", ["vendor"]))
