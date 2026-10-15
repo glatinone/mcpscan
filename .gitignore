@@ -9,3 +9,8 @@ venv/
 .mypy_cache/
 *.sarif
 .DS_Store
+
+# Local scan output from running the scanner against tests/fixtures/vulnerable.
+# Regenerable on demand; committing it just adds churn.
+verification-vulnerable.json
+uv.lock
