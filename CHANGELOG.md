@@ -6,6 +6,49 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-25
+
+### Added
+
+- **MCP024-MCP030: server-side MCP authorization rules.** Before this
+  release, mcpscan's auth-adjacent rules looked at how a client connects to a
+  server, not at how a server validates the tokens it receives. A deliberately
+  naive MCP server that fails 8 authorization tests got a clean report from
+  0.20.0. New `mcpscan/rules/server_auth.py`, AST-based (no regex):
+  - **MCP024** (high, MCP07): `jwt.decode()` with signature verification
+    disabled (`verify_signature: False`, legacy `verify=False`, or `"none"` in
+    `algorithms`).
+  - **MCP025** (high, MCP07): `jwt.decode()` with no `audience=` or with
+    `verify_aud: False`.
+  - **MCP026** (medium, MCP07): `jwt.decode()` with no `issuer=` or with
+    `verify_iss: False`.
+  - **MCP027** (low-medium, MCP07): hand-built 401s while nothing in the
+    project emits a `WWW-Authenticate: Bearer resource_metadata=` challenge.
+  - **MCP028** (medium, MCP07): hand-built bearer auth while no file routes
+    `/.well-known/oauth-protected-resource` and no SDK helper serves it.
+  - **MCP029** (high, MCP01): token passthrough. The inbound `Authorization`
+    header reaches an outbound `Authorization` header, tracked by a small
+    intra-module taint analysis across returns, aliases and helper
+    parameters.
+  - **MCP030** (medium, MCP01): `access_token` read from a query object.
+
+  Scope gate for precision: the rules only look at Python files that import
+  `mcp`/`fastmcp` or dispatch `tools/call`/`tools/list`. When the scan
+  contains such a server, they also cover modules that read the inbound
+  `Authorization` header. Test files are skipped. PyJWT and python-jose are
+  covered; authlib is not. On the naive/hardened experiment servers, 6 of 8
+  failures are now caught (was 0), with 0 findings on the hardened server.
+  The two remaining failures, per-tool scope checks and anonymous
+  `tools/list`, are runtime-only by nature. Also run against fastmcp, the `mcp`
+  SDK, litellm, hermes-agent, paperclip and four smaller MCP projects: 0
+  new-rule findings after fixing two false-positive sources found in
+  litellm (outbound-request headers mistaken for inbound, and session-cookie
+  JWT decodes).
+  43 new tests (`tests/test_server_auth.py`), plus a vulnerable/clean
+  `auth_server.py` fixture pair.
+- README: MCP023 was missing from the rules table; added together with
+  MCP024-MCP030 and the OWASP mapping.
+
 ### Fixed
 
 - Inline suppression now honors every `mcpscan: ignore[...]` marker on a line,

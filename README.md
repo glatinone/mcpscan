@@ -74,6 +74,8 @@ pip install -e .
 
 ## 🔍 What it catches
 
+30 rules, MCP001–MCP030. `mcpscan --list-rules` prints them with severity, fixability and OWASP mapping.
+
 | ID | Check | Severity | OWASP MCP Top 10 | What it flags |
 |----|-------|:--------:|:---:|---------------|
 | **MCP001** | 🧨 Command injection | High–Critical | [MCP05:2025](#-owasp-mcp-top-10-mapping) | `os.system`, `subprocess(... shell=True)`, `child_process.exec()` with interpolated input, `eval` |
@@ -98,6 +100,14 @@ pip install -e .
 | **MCP020** | 🔓 Missing `permissions:` block | Medium | [MCP02:2025](#-owasp-mcp-top-10-mapping) | A workflow with no explicit top-level or job-level `permissions:` key anywhere, relying on the repo/org default token scope, that also writes to GitHub (a release, PR/issue comment, push, or write-verb API call) |
 | **MCP021** | 🖱️ Untrusted click-to-privileged-action | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A `click`/`onclick` handler reads data off the clicked element (`.dataset.x`, `getAttribute(...)`) and forwards it to a privileged sink (extension messaging, or an approve/grant/authorize call) with no `event.isTrusted` check anywhere in the handler |
 | **MCP022** | 🌉 Loopback bridge with no Origin check | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | A server bound to `127.0.0.1`/`localhost` only (not bind-all — that's MCP018) has a permissive CORS setup (bare `cors()`, bare `CORS(app)`, or a literal `Access-Control-Allow-Origin: *`) or a WebSocket `connection` handler with no `Origin` check anywhere in the handler |
+| **MCP023** | 🎭 Policy-override framing | High–Critical | [MCP03:2025](#-owasp-mcp-top-10-mapping) | A tool description that narrates the agent's own refusal policy as lifted or superseded ("although you did not have internet access... this tool now grants you") instead of issuing an imperative injection |
+| **MCP024** | 🔏 JWT signature not verified | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | An MCP server calls PyJWT/python-jose `jwt.decode()` with `options={"verify_signature": False}`, `verify=False`, or `"none"` in `algorithms` |
+| **MCP025** | 🎯 JWT audience not validated | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | An MCP server's `jwt.decode()` passes no `audience=` or sets `verify_aud: False`, so tokens minted for other APIs are accepted (RFC 8707) |
+| **MCP026** | 🏛️ JWT issuer not validated | Medium | [MCP07:2025](#-owasp-mcp-top-10-mapping) | An MCP server's `jwt.decode()` passes no `issuer=` or sets `verify_iss: False` |
+| **MCP027** | 📭 401 with no discovery challenge | Low–Medium | [MCP07:2025](#-owasp-mcp-top-10-mapping) | An MCP server that handles bearer tokens builds its own 401s, and nothing in the project emits `WWW-Authenticate: Bearer resource_metadata="..."` (Low when a PRM well-known route exists) |
+| **MCP028** | 🗺️ No Protected Resource Metadata | Medium | [MCP07:2025](#-owasp-mcp-top-10-mapping) | An MCP server that handles bearer tokens and builds its own 401s, where no file routes `/.well-known/oauth-protected-resource` (RFC 9728) and no SDK helper serves it |
+| **MCP029** | 🔁 Token passthrough | High | [MCP01:2025](#-owasp-mcp-top-10-mapping) | The inbound `Authorization` header flows, through assignments, returns, aliases and helper parameters in the same module, into an outbound `Authorization` header |
+| **MCP030** | 🔗 Access token in the query string | Medium | [MCP01:2025](#-owasp-mcp-top-10-mapping) | An MCP server reads `access_token` from a query object (`parse_qs(...)`, `request.args`, `request.query_params`, `request.GET`, FastAPI `Query`) |
 
 ### 🏷️ OWASP MCP Top 10 mapping
 
@@ -111,13 +121,13 @@ output.
 
 | OWASP category | Title | mcpscan coverage |
 |---|---|---|
-| MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005 |
+| MCP01:2025 | Token Mismanagement & Secret Exposure | MCP005, MCP029, MCP030 |
 | MCP02:2025 | Privilege Escalation via Scope Creep | MCP004, MCP011, MCP017, MCP020 |
-| MCP03:2025 | Tool Poisoning | MCP002, MCP013 |
+| MCP03:2025 | Tool Poisoning | MCP002, MCP013, MCP023 |
 | MCP04:2025 | Software Supply Chain Attacks & Dependency Tampering | MCP006, MCP014, MCP016, MCP019 |
 | MCP05:2025 | Command Injection & Execution | MCP001, MCP003, MCP007, MCP008, MCP009, MCP015 |
 | MCP06:2025 | Prompt Injection via Contextual Payloads | *not yet covered* |
-| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018, MCP021, MCP022 |
+| MCP07:2025 | Insufficient Authentication & Authorization | MCP010, MCP012, MCP018, MCP021, MCP022, MCP024–MCP028 |
 | MCP08:2025 | Lack of Audit and Telemetry | *not yet covered* |
 | MCP09:2025 | Shadow MCP Servers | `--discover` (v0.7.0) |
 | MCP10:2025 | Context Injection & Over-Sharing | *not yet covered* |
@@ -567,6 +577,47 @@ handler window. Restricting CORS to a named origin, or validating
 `req.headers.origin` before accepting a WebSocket upgrade, both suppress
 the finding.
 
+### MCP024–MCP030: how your server checks tokens
+
+Before v0.21.0, every auth-adjacent mcpscan rule looked at how a client
+*connects to* a server (MCP012), or whether an endpoint is exposed at all
+(MCP018, MCP022). None of them looked at how a server *validates* the bearer
+tokens it receives. A deliberately naive MCP server that failed 8 of the 10
+tests in an MCP authorization harness got a clean report from mcpscan 0.20,
+and the same report Semgrep (200 rules) and Bandit gave its hardened twin.
+v0.21.0 adds seven Python rules for the parts of that failure list that are
+visible in source:
+
+```console
+$ mcpscan naive/server.py
+   HIGH    MCP025  MCP server accepts JWT access tokens without validating the audience [MCP07:2025]
+           server.py:77
+           > claims = jwt.decode(token, signing_key(token), algorithms=["RS256"],
+   HIGH    MCP029  MCP server forwards the client's access token to a downstream API (token passthrough) [MCP01:2025]
+           server.py:138
+           > out = call_downstream("GET", "/notes", ds_auth)
+  MEDIUM   MCP030  MCP server accepts an access token from the URL query string [MCP01:2025]
+           server.py:73
+  ...
+Summary: 3 high  4 medium
+```
+
+That's 6 of the 8 failures caught, with 0 findings on the hardened server.
+The two left are a missing per-tool scope check and an anonymous
+`tools/list`. Both need a running server to prove, so test them at runtime.
+
+The rules use the Python AST, not regex. They only look at files that look
+like an MCP server (import `mcp`/`fastmcp`, or dispatch `tools/call` /
+`tools/list`). They also cover, when the scan contains such a server, a
+split-out module that reads the inbound `Authorization` header. Test files are
+skipped. MCP029 is a small intra-module taint analysis: header, then return
+value, then tuple unpacking through a function alias (`auth = authenticate`),
+then f-string, then a helper whose parameter reaches
+`add_header("Authorization", ...)`. Using the server's own credential, or a
+token obtained from an exchange, stays clean. MCP028 only counts a
+Protected Resource Metadata path that is actually routed. A PRM URL that is
+built but never served doesn't count.
+
 ### `--fix`: mechanical, not magical
 
 `--fix` only touches findings where the correct patch is unambiguous — a value swap
@@ -954,6 +1005,10 @@ ships from the tagged commit, not from `main`.
   WebSocket Origin check~~ (MCP022, v0.18.0, the same bug class BraveMCP's
   own bridge shipped and fixed in v0.2.0 — see
   [above](#mcp022-bound-to-localhost-isnt-the-same-as-unreachable))
+- [x] ~~Server-side MCP authorization: unverified/audience-less/issuer-less JWT
+  decoding, missing discovery (`WWW-Authenticate` + PRM), token passthrough,
+  tokens in the query string~~ (MCP024–MCP030, v0.21.0, see
+  [above](#mcp024mcp030-how-your-server-checks-tokens))
 - [ ] Fleet-wide `--discover` aggregation across machines (needs an inventory/agent
   backend this project doesn't have yet — out of scope for a single static scanner).
 

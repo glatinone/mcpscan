@@ -20,6 +20,7 @@ from . import debug_endpoint     # noqa: F401,E402
 from . import dom_trust          # noqa: F401,E402
 from . import origin_check       # noqa: F401,E402
 from . import policy_override    # noqa: F401,E402
+from . import server_auth        # noqa: F401,E402
 
 
 def all_rules():
