@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import List
+from typing import List, Tuple
 
 from ..findings import Finding, Severity
 from ..loaders import FileInfo, by_kind
@@ -30,19 +30,37 @@ TRAVERSAL = re.compile(r"\.\./|\.\.\\")
 BOUNDARY_CALL = re.compile(r"\w*(?:safe_path|validate_path)\w*\s*\(")
 RESOLVE = re.compile(r"\b(?:realpath|resolve)\s*\(")
 PREFIX_CHECK = re.compile(r"\b(?:startswith|is_relative_to|commonpath)\s*\(")
+# Parameters that never carry caller input (pytest fixtures included).
+NOT_CALLER_INPUT = {"self", "cls", "tmp_path", "tmpdir"}
 TWO_PATH_SINKS = {("shutil", "copy"), ("shutil", "copy2"), ("shutil", "copyfile"),
                   ("shutil", "move"), ("os", "rename"), ("os", "replace")}
 
 
 def _derived(value: ast.AST, tainted: set) -> bool:
-    """`p`, `Path(p)` or `os.path.abspath(p)` where p is tainted."""
+    """`p`, `p[k]`, `p.get(k)`, `base / p`, or Path/abspath/str/os.path.join over p, where p is tainted."""
     if isinstance(value, ast.Name):
         return value.id in tainted
-    if isinstance(value, ast.Call) and len(value.args) == 1:
+    if isinstance(value, ast.Subscript):
+        return _derived(value.value, tainted)
+    if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Div):
+        return _derived(value.left, tainted) or _derived(value.right, tainted)
+    if isinstance(value, ast.Call):
         fn = value.func
+        if isinstance(fn, ast.Attribute) and fn.attr == "get":
+            return _derived(fn.value, tainted)
         name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
-        return name in ("Path", "abspath") and _derived(value.args[0], tainted)
+        return name in ("Path", "abspath", "str", "join") \
+            and any(_derived(a, tainted) for a in value.args)
     return False
+
+
+def _is_join(value: ast.AST) -> bool:
+    """`os.path.join(...)` or `base / name`: a path built onto a base directory."""
+    if isinstance(value, ast.BinOp):
+        return isinstance(value.op, ast.Div)
+    return isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) \
+        and value.func.attr == "join" and isinstance(value.func.value, ast.Attribute) \
+        and value.func.value.attr == "path"
 
 
 def _write_targets(call: ast.Call) -> List[ast.AST]:
@@ -64,13 +82,24 @@ def _write_targets(call: ast.Call) -> List[ast.AST]:
     return []
 
 
-def _param_write_lines(text: str) -> List[int]:
-    """Lines where a function writes to one of its own parameters with no base-dir check."""
+def _save_targets(call: ast.Call) -> List[ast.AST]:
+    """openpyxl/PIL-style `wb.save(path)`. One positional arg skips torch/np.save(obj, path).
+    Only a path joined in the same function counts: a helper handed a finished path
+    (`wb.save(filepath)`) is checked where that path is built."""
+    fn = call.func
+    if isinstance(fn, ast.Attribute) and fn.attr == "save" and len(call.args) == 1:
+        return [call.args[0]]
+    return []
+
+
+def _param_write_lines(text: str) -> List[Tuple[int, bool]]:
+    """(line, is_builder) where a function writes to, or returns a path joined from, one of its
+    own parameters (or `arguments.get(...)`/`arguments[...]` of one) with no base-dir check."""
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return []
-    hits = set()
+    hits = {}
     for fn in ast.walk(tree):
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
@@ -78,18 +107,29 @@ def _param_write_lines(text: str) -> List[int]:
         if BOUNDARY_CALL.search(src) or (RESOLVE.search(src) and PREFIX_CHECK.search(src)):
             continue
         a = fn.args
-        tainted = {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs} - {"self", "cls"}
-        assigns = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Assign)),
-                         key=lambda n: n.lineno)
-        for n in assigns:
-            if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) \
-                    and _derived(n.value, tainted):
-                tainted.add(n.targets[0].id)
+        tainted = {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs} - NOT_CALLER_INPUT
+        joined = set()  # tainted names built with os.path.join or `/`
+        steps = sorted((n for n in ast.walk(fn) if isinstance(n, (ast.Assign, ast.For))),
+                       key=lambda n: n.lineno)
+        for n in steps:
+            if isinstance(n, ast.For):  # `for item in tainted_list` taints item
+                target, value = n.target, n.iter
+            else:
+                target, value = (n.targets[0] if len(n.targets) == 1 else None), n.value
+            if isinstance(target, ast.Name) and _derived(value, tainted):
+                tainted.add(target.id)
+                if _is_join(value) or _derived(value, joined):
+                    joined.add(target.id)
         for n in ast.walk(fn):
-            if isinstance(n, ast.Call) and any(
-                    isinstance(t, ast.Name) and t.id in tainted for t in _write_targets(n)):
-                hits.add(n.lineno)
-    return sorted(hits)
+            if isinstance(n, ast.Call) and (
+                    any(_derived(t, tainted) for t in _write_targets(n))
+                    or any(_derived(t, joined) or (_is_join(t) and _derived(t, tainted))
+                           for t in _save_targets(n))):
+                hits[n.lineno] = False
+            elif isinstance(n, ast.Return) and n.value is not None and _is_join(n.value) \
+                    and _derived(n.value, tainted):
+                hits.setdefault(n.lineno, True)
+    return sorted(hits.items())
 
 
 @register
@@ -121,8 +161,20 @@ class PathTraversal(Rule):
                     ))
             if is_py:
                 seen = {x.line for x in out if x.path == f.relpath}
-                for i in _param_write_lines(f.text):
+                for i, builder in _param_write_lines(f.text):
                     if i in seen:
+                        continue
+                    if builder:
+                        out.append(self.finding(
+                            f, i, f.lines[i - 1],
+                            title="Path helper joins a caller-controlled name onto a base "
+                                  "directory with no containment check",
+                            detail="os.path.join/`/` keep an absolute name and `../` walks out of "
+                                   "the base. Resolve the result and confirm it stays inside the "
+                                   "base (realpath + commonpath, or resolve() + is_relative_to) "
+                                   "before returning it (CVE-2026-40576 shape).",
+                            severity=Severity.MEDIUM,
+                        ))
                         continue
                     out.append(self.finding(
                         f, i, f.lines[i - 1],

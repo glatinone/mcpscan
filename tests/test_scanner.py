@@ -392,7 +392,7 @@ class TestFixer(unittest.TestCase):
         # readable/writable after this helper returns (see apply_fixes tests).
         tmp = tempfile.mkdtemp()
         abspath = os.path.join(tmp, relpath)
-        with open(abspath, "w", encoding="utf-8") as fh:
+        with open(abspath, "w", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007]
             fh.write(text)
         f = FileInfo(relpath=relpath, abspath=abspath, text=text,
                      kind="source", in_dot_claude=False)

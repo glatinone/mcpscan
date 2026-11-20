@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **MCP007: follows paths through `os.path.join`, `/` and tool-argument
+  reads.** A write path built as `os.path.join(base, p)` or `base / p`, or read
+  from a parameter dict (`arguments.get("path")`, `arguments["path"]`, and items
+  of a list read that way in a `for` loop) now counts as caller-controlled. This
+  catches CVE-2026-44336 (PraisonAI 4.6.33 `rules_create`) and CVE-2026-84201
+  (appium-mcp-server `write_file` / `write_files_batch`), which 0.22.0 missed.
+- **MCP007: path-builder helpers.** A function that returns
+  `os.path.join(base, p)` or `base / p` of a parameter with no containment
+  check is a medium finding. This catches CVE-2026-40576 (excel-mcp-server
+  0.1.7 `get_excel_path`); 0.1.8 stays clean.
+- **MCP007:** `x.save(path)` (openpyxl, PIL) is a write sink when the path is
+  joined in the same function.
+
+### Fixed
+
+- **MCP007:** pytest `tmp_path` / `tmpdir` parameters are not caller input.
+
 ## [0.22.0] - 2026-11-20
 
 ### Added

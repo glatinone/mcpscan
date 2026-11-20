@@ -92,6 +92,93 @@ class TestParamWriteSink(unittest.TestCase):
         ), [])
 
 
+class TestJoinedAndArgumentPaths(unittest.TestCase):
+    """CVE-2026-44336 (PraisonAI rules_create), CVE-2026-84201 (appium-mcp-server write_file /
+    write_files_batch), CVE-2026-40576 (excel-mcp-server get_excel_path)."""
+
+    def test_join_then_open_write_is_flagged(self):
+        findings = _check(
+            "import os\n"
+            "def rules_create(rule_name, content):\n"
+            "    rule_path = os.path.join(RULES_DIR, rule_name)\n"
+            "    with open(rule_path, 'w') as f:\n"
+            "        f.write(content)\n"
+        )
+        self.assertEqual([f.line for f in findings], [4])
+        self.assertEqual(findings[0].severity, Severity.HIGH)
+
+    def test_join_with_commonpath_check_is_clean(self):
+        self.assertEqual(_check(
+            "import os\n"
+            "def rules_create(rule_name, content):\n"
+            "    rule_path = os.path.realpath(os.path.join(RULES_DIR, rule_name))\n"
+            "    if os.path.commonpath([RULES_DIR, rule_path]) != RULES_DIR:\n"
+            "        raise ValueError(rule_name)\n"
+            "    with open(rule_path, 'w') as f:\n"
+            "        f.write(content)\n"
+        ), [])
+
+    def test_arguments_get_and_batch_loop_are_flagged(self):
+        findings = _check(
+            "async def handle_call_tool(name, arguments):\n"
+            "    path = arguments.get('path')\n"
+            "    target = PROJECT_ROOT / path\n"
+            "    with open(target, 'w') as f:\n"
+            "        f.write(arguments['content'])\n"
+            "async def write_batch(arguments):\n"
+            "    for file in arguments.get('files', []):\n"
+            "        (PROJECT_ROOT / file['path']).write_text(file['content'])\n"
+        )
+        self.assertEqual([f.line for f in findings], [4, 8])
+
+    def test_arguments_get_with_resolve_check_is_clean(self):
+        self.assertEqual(_check(
+            "async def handle_call_tool(name, arguments):\n"
+            "    target = (PROJECT_ROOT / arguments['path']).resolve()\n"
+            "    if not target.is_relative_to(PROJECT_ROOT):\n"
+            "        raise ValueError('outside project')\n"
+            "    target.write_text(arguments['content'])\n"
+        ), [])
+
+    def test_path_builder_helper_is_flagged(self):
+        findings = _check(
+            "import os\n"
+            "def get_excel_path(filename):\n"
+            "    if os.path.isabs(filename):\n"
+            "        return filename\n"
+            "    return os.path.join(EXCEL_FILES_PATH, filename)\n"
+        )
+        self.assertEqual([f.line for f in findings], [5])
+        self.assertEqual(findings[0].severity, Severity.MEDIUM)
+
+    def test_path_builder_with_containment_check_is_clean(self):
+        self.assertEqual(_check(
+            "import os\n"
+            "def get_excel_path(filename):\n"
+            "    base = os.path.realpath(EXCEL_FILES_PATH)\n"
+            "    p = os.path.realpath(os.path.join(base, filename))\n"
+            "    if os.path.commonpath([base, p]) != base:\n"
+            "        raise ValueError(filename)\n"
+            "    return p\n"
+        ), [])
+
+    def test_save_of_joined_path_is_flagged_but_not_a_handed_in_path(self):
+        findings = _check(
+            "import os\n"
+            "def export(wb, name):\n"
+            "    wb.save(os.path.join(OUT_DIR, name))\n"
+            "def write_data(filepath, wb):\n"
+            "    wb.save(filepath)\n"
+        )
+        self.assertEqual([f.line for f in findings], [3])
+
+    def test_pytest_tmp_path_is_not_caller_input(self):
+        self.assertEqual(_check(
+            "def test_upload(tmp_path):\n"
+            "    (tmp_path / 'a.txt').write_text('x')\n"
+        ), [])
+
+
 class TestWindowOpenFalsePositive(unittest.TestCase):
     def test_js_window_open_in_python_string_is_not_flagged(self):
         self.assertEqual(_check(
