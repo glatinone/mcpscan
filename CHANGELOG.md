@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-20
+
 ### Added
 
 - **MCP007: follows paths through `os.path.join`, `/` and tool-argument
