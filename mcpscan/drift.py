@@ -100,7 +100,7 @@ def _save_baseline(path: str, servers: Dict[str, str]) -> None:
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
+    with open(path, "w", encoding="utf-8") as fh:  # mcpscan: ignore[MCP007] baseline path is ours, not tool input
         json.dump({"version": 1, "servers": servers}, fh, indent=2, sort_keys=True)
 
 

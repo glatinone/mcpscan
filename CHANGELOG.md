@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **MCP007: writes to a caller-controlled path.** A Python function that
+  writes (`open(..., "w"/"wb"/"a"/"x")`, `write_text`/`write_bytes`,
+  `shutil.copy*`/`move`, `os.rename`/`replace`) to one of its own parameters,
+  or to `Path(p)`/`os.path.abspath(p)` of one, with no base-directory check
+  (`realpath`/`resolve` + `startswith`/`is_relative_to`/`commonpath`, or a
+  `*safe_path*`/`*validate_path*` call) is now a high finding. This is the
+  CVE-2026-27825 shape in sooperset/mcp-atlassian 0.16.0, which 0.21.0
+  missed because nothing on the `open()` line was interpolated.
+
+### Fixed
+
+- **MCP007:** stop flagging browser `window.open(` inside Python HTML strings.
+
 ## [0.21.0] - 2026-10-25
 
 ### Added

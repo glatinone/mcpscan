@@ -7,6 +7,7 @@ reads whose path is interpolated/concatenated rather than a constant literal.
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import List
 
@@ -14,9 +15,9 @@ from ..findings import Finding, Severity
 from ..loaders import FileInfo, by_kind
 from .base import Rule, register
 
-# File-open sinks.
+# File-open sinks. `window.open(` is browser JS embedded in a Python string, not a file open.
 PY_OPEN = re.compile(
-    r"\bopen\s*\(|\.read_text\s*\(|\.read_bytes\s*\(|send_file\s*\(|FileResponse\s*\(",
+    r"(?<!window\.)\bopen\s*\(|\.read_text\s*\(|\.read_bytes\s*\(|send_file\s*\(|FileResponse\s*\(",
 )
 JS_OPEN = re.compile(
     r"\bfs\.(?:readFile|readFileSync|createReadStream)\s*\(|\breadFile(?:Sync)?\s*\(",
@@ -25,6 +26,70 @@ JS_OPEN = re.compile(
 INTERP = re.compile(r"`[^`]*\$\{|\+\s*\w|f['\"]|\.format\(|os\.path\.join\([^)]*\b\w")
 # Explicit traversal token sitting in a literal.
 TRAVERSAL = re.compile(r"\.\./|\.\.\\")
+# A function that does either of these is treated as confining its paths to a base dir.
+BOUNDARY_CALL = re.compile(r"\w*(?:safe_path|validate_path)\w*\s*\(")
+RESOLVE = re.compile(r"\b(?:realpath|resolve)\s*\(")
+PREFIX_CHECK = re.compile(r"\b(?:startswith|is_relative_to|commonpath)\s*\(")
+TWO_PATH_SINKS = {("shutil", "copy"), ("shutil", "copy2"), ("shutil", "copyfile"),
+                  ("shutil", "move"), ("os", "rename"), ("os", "replace")}
+
+
+def _derived(value: ast.AST, tainted: set) -> bool:
+    """`p`, `Path(p)` or `os.path.abspath(p)` where p is tainted."""
+    if isinstance(value, ast.Name):
+        return value.id in tainted
+    if isinstance(value, ast.Call) and len(value.args) == 1:
+        fn = value.func
+        name = fn.id if isinstance(fn, ast.Name) else fn.attr if isinstance(fn, ast.Attribute) else ""
+        return name in ("Path", "abspath") and _derived(value.args[0], tainted)
+    return False
+
+
+def _write_targets(call: ast.Call) -> List[ast.AST]:
+    """Path arguments of a filesystem write sink, or [] if `call` is not one."""
+    fn = call.func
+    if isinstance(fn, ast.Name) and fn.id == "open" and call.args:
+        mode = call.args[1] if len(call.args) > 1 else next(
+            (k.value for k in call.keywords if k.arg == "mode"), None)
+        if isinstance(mode, ast.Constant) and isinstance(mode.value, str) \
+                and set(mode.value) & set("wax+"):
+            return [call.args[0]]
+        return []
+    if not isinstance(fn, ast.Attribute):
+        return []
+    if fn.attr in ("write_text", "write_bytes"):
+        return [fn.value]
+    if isinstance(fn.value, ast.Name) and (fn.value.id, fn.attr) in TWO_PATH_SINKS:
+        return list(call.args[:2])
+    return []
+
+
+def _param_write_lines(text: str) -> List[int]:
+    """Lines where a function writes to one of its own parameters with no base-dir check."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return []
+    hits = set()
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        src = ast.get_source_segment(text, fn) or ""
+        if BOUNDARY_CALL.search(src) or (RESOLVE.search(src) and PREFIX_CHECK.search(src)):
+            continue
+        a = fn.args
+        tainted = {p.arg for p in a.posonlyargs + a.args + a.kwonlyargs} - {"self", "cls"}
+        assigns = sorted((n for n in ast.walk(fn) if isinstance(n, ast.Assign)),
+                         key=lambda n: n.lineno)
+        for n in assigns:
+            if len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) \
+                    and _derived(n.value, tainted):
+                tainted.add(n.targets[0].id)
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Call) and any(
+                    isinstance(t, ast.Name) and t.id in tainted for t in _write_targets(n)):
+                hits.add(n.lineno)
+    return sorted(hits)
 
 
 @register
@@ -53,5 +118,18 @@ class PathTraversal(Rule):
                         detail="Resolve the path and confirm it stays within an allowed base "
                                "directory (e.g. os.path.realpath + prefix check) before opening.",
                         severity=sev,
+                    ))
+            if is_py:
+                seen = {x.line for x in out if x.path == f.relpath}
+                for i in _param_write_lines(f.text):
+                    if i in seen:
+                        continue
+                    out.append(self.finding(
+                        f, i, f.lines[i - 1],
+                        title="Write to a caller-controlled path with no base-directory check",
+                        detail="The written path is a function parameter. Resolve it and confirm it "
+                               "stays inside an allowed base directory (Path.resolve() + "
+                               "is_relative_to) before writing (CVE-2026-27825 shape).",
+                        severity=Severity.HIGH,
                     ))
         return out

@@ -84,7 +84,7 @@ pip install -e .
 | **MCP004** | 🔓 Over-broad permissions | High–Critical | [MCP02:2025](#-owasp-mcp-top-10-mapping) | Wildcard grants (`Bash(*)`, `"*"`), `bypassPermissions`, auto-approve |
 | **MCP005** | 🔑 Leaked secrets | High–Critical | [MCP01:2025](#-owasp-mcp-top-10-mapping) | API keys / tokens committed into configs (auto-redacted in output) |
 | **MCP006** | 📦 Vulnerable SDK | High | [MCP04:2025](#-owasp-mcp-top-10-mapping) | Known-bad `@modelcontextprotocol/sdk` / `mcp` / `fastmcp` versions |
-| **MCP007** | 📂 Path traversal | Medium–High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | File reads (`open`, `fs.readFile`) whose path is built from tool input |
+| **MCP007** | 📂 Path traversal | Medium–High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | File reads (`open`, `fs.readFile`) whose path is built from tool input; Python writes to a function parameter with no base-dir check |
 | **MCP008** | 🌐 SSRF | Medium–High | [MCP05:2025](#-owasp-mcp-top-10-mapping) | Outbound requests (`requests`, `fetch`, `axios`) to a URL built from input |
 | **MCP009** | 📦 Insecure deserialization | High–Critical | [MCP05:2025](#-owasp-mcp-top-10-mapping) | `pickle`/`marshal`/`yaml.load` (no SafeLoader), `node-serialize` on untrusted data |
 | **MCP010** | 🔐 Disabled TLS | High | [MCP07:2025](#-owasp-mcp-top-10-mapping) | `verify=False`, `rejectUnauthorized: false`, unverified SSL context |
